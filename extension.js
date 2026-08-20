@@ -73,6 +73,7 @@ const CATEGORIES = [...new Set(EVENT_DEFS.map(e => e.category))];
 let server;
 let output;
 let extensionContext;
+let relayStoragePathOverride=null;
 let retryTimer;
 let heartbeatTimer;
 let hookReconcileTimer;
@@ -384,7 +385,9 @@ function pcmWavInfo(buffer){
   }
   if(!pcm) throw new Error('Use an uncompressed PCM WAV file.');
   if(![8,16,24,32].includes(bits)) throw new Error(`Unsupported PCM bit depth: ${bits}. Use 8, 16, 24, or 32-bit WAV.`);
-  return {fmt,data,bits,format};
+  const byteRate=fmt.size>=16?buffer.readUInt32LE(fmt.start+8):0;
+  const durationMs=byteRate>0?Math.ceil((data.size/byteRate)*1000):0;
+  return {fmt,data,bits,format,byteRate,durationMs};
 }
 function validatePcmWav(buffer) { pcmWavInfo(buffer); return true; }
 function scalePcmWav(buffer, volumePercent) {
@@ -425,20 +428,49 @@ async function pruneAudioCache(){
 }
 
 function spawnCaptured(command, args, options={}) {
+  const {timeoutMs=30000,...spawnOptions}=options;
   return new Promise((resolve,reject) => {
-    const child = spawn(command,args,{ windowsHide:true, stdio:['ignore','pipe','pipe'], ...options });
-    let stdout='', stderr='';
+    const child = spawn(command,args,{ windowsHide:true, stdio:['ignore','pipe','pipe'], ...spawnOptions });
+    let stdout='', stderr='', settled=false, timer;
+    const finish=(fn,value)=>{if(settled)return;settled=true;if(timer)clearTimeout(timer);fn(value);};
     child.stdout?.on('data', d => stdout += String(d));
     child.stderr?.on('data', d => stderr += String(d));
-    child.once('error', reject);
-    child.once('exit', code => {
-      if (code === 0) return resolve({stdout,stderr});
+    child.once('error', error => finish(reject,error));
+    child.once('exit', (code,signal) => {
+      if (code === 0) return finish(resolve,{stdout,stderr});
       const detail=(stderr||stdout||'').trim();
-      reject(new Error(`${command} exited with code ${code}${detail?`: ${detail}`:''}`));
+      finish(reject,new Error(`${command} exited with code ${code===null?'null':code}${signal?` (${signal})`:''}${detail?`: ${detail}`:''}`));
     });
+    if(Number.isFinite(timeoutMs)&&timeoutMs>0){
+      timer=setTimeout(()=>{
+        try{child.kill();}catch(_error){}
+        const error=new Error(`${command} audio playback timed out after ${Math.round(timeoutMs)} ms.`);
+        error.code='ETIMEDOUT';
+        finish(reject,error);
+      },timeoutMs);
+      timer.unref?.();
+    }
   });
 }
-async function playRawWav(file, repeat=1, gap=0) {
+function audioPlaybackTimeoutMs(count=1,gapMs=0,durationMs=0){
+  const repeats=Math.round(clamp(count,1,5));
+  const gap=Math.round(clamp(gapMs,0,3000));
+  const duration=Math.max(0,Number(durationMs)||0);
+  return Math.min(10*60*1000,8000 + repeats*(duration+3000) + Math.max(0,repeats-1)*gap);
+}
+function windowsAudioHostScript(){
+  return [
+      "$ErrorActionPreference='Stop'",
+      '$dll = $env:CLAUDE_SOUND_NATIVE_DLL',
+      '$dir = [IO.Path]::GetDirectoryName($dll)',
+      '[IO.Directory]::CreateDirectory($dir) | Out-Null',
+      "$src = 'using System; using System.Runtime.InteropServices; public static class ClaudeSoundNative { [DllImport(\"winmm.dll\", CharSet=CharSet.Unicode, SetLastError=true)] public static extern bool PlaySound(string pszSound, IntPtr hmod, uint fdwSound); }'; $loaded = $false; if (Test-Path -LiteralPath $dll) { try { Add-Type -Path $dll; $loaded = $true } catch { Remove-Item -LiteralPath $dll -Force -ErrorAction SilentlyContinue } }; if (-not $loaded) { $lock = $dll + '.lock'; if (Test-Path -LiteralPath $lock) { try { $lockItem = Get-Item -LiteralPath $lock; if (([DateTime]::UtcNow - $lockItem.LastWriteTimeUtc).TotalSeconds -gt 30) { Remove-Item -LiteralPath $lock -Force -ErrorAction SilentlyContinue } } catch {} }; $stream = $null; try { try { $stream = [IO.File]::Open($lock, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None) } catch {} ; if ($stream) { if (Test-Path -LiteralPath $dll) { Add-Type -Path $dll } else { Add-Type -TypeDefinition $src -OutputAssembly $dll } } else { $deadline = (Get-Date).AddSeconds(5); while (-not (Test-Path -LiteralPath $dll) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 50 }; if (Test-Path -LiteralPath $dll) { Add-Type -Path $dll } else { Add-Type -TypeDefinition $src } } } finally { if ($stream) { $stream.Dispose(); Remove-Item -LiteralPath $lock -Force -ErrorAction SilentlyContinue } } }",
+      '$count = [Math]::Max(1, [int]$env:CLAUDE_SOUND_REPEAT)',
+      '$gap = [Math]::Max(0, [int]$env:CLAUDE_SOUND_GAP_MS)',
+      'for ($i = 0; $i -lt $count; $i++) { $ok = [ClaudeSoundNative]::PlaySound($env:CLAUDE_SOUND_FILE, [IntPtr]::Zero, 0x00020002); if (-not $ok) { throw \'Windows PlaySound failed.\' }; if ($i -lt ($count - 1) -and $gap -gt 0) { Start-Sleep -Milliseconds $gap } }'
+  ].join('; ');
+}
+async function playRawWav(file, repeat=1, gap=0, durationMs=0) {
   const count=Math.round(clamp(repeat,1,5));
   const gapMs=Math.round(clamp(gap,0,3000));
   if(process.platform==='win32'){
@@ -447,23 +479,14 @@ async function playRawWav(file, repeat=1, gap=0) {
     // instead of invoking the C# compiler. Repeats happen inside one PowerShell
     // process, avoiding a process spawn/compile for every repetition.
     const audioHostDir=path.join(extensionContext.globalStorageUri.fsPath,'audio-host');
-    const script=[
-      "$ErrorActionPreference='Stop'",
-      '$dll = $env:CLAUDE_SOUND_NATIVE_DLL',
-      '$dir = [IO.Path]::GetDirectoryName($dll)',
-      '[IO.Directory]::CreateDirectory($dir) | Out-Null',
-      "$src = 'using System; using System.Runtime.InteropServices; public static class ClaudeSoundNative { [DllImport(\"winmm.dll\", CharSet=CharSet.Unicode, SetLastError=true)] public static extern bool PlaySound(string pszSound, IntPtr hmod, uint fdwSound); }'; $loaded = $false; if (Test-Path -LiteralPath $dll) { try { Add-Type -Path $dll; $loaded = $true } catch { Remove-Item -LiteralPath $dll -Force -ErrorAction SilentlyContinue } }; if (-not $loaded) { $lock = $dll + '.lock'; $stream = $null; try { try { $stream = [IO.File]::Open($lock, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None) } catch {} ; if ($stream) { if (Test-Path -LiteralPath $dll) { Add-Type -Path $dll } else { Add-Type -TypeDefinition $src -OutputAssembly $dll } } else { $deadline = (Get-Date).AddSeconds(5); while (-not (Test-Path -LiteralPath $dll) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 50 }; if (Test-Path -LiteralPath $dll) { Add-Type -Path $dll } else { Add-Type -TypeDefinition $src } } } finally { if ($stream) { $stream.Dispose(); Remove-Item -LiteralPath $lock -Force -ErrorAction SilentlyContinue } } }",
-      '$count = [Math]::Max(1, [int]$env:CLAUDE_SOUND_REPEAT)',
-      '$gap = [Math]::Max(0, [int]$env:CLAUDE_SOUND_GAP_MS)',
-      'for ($i = 0; $i -lt $count; $i++) { $ok = [ClaudeSoundNative]::PlaySound($env:CLAUDE_SOUND_FILE, [IntPtr]::Zero, 0x00020002); if (-not $ok) { throw \'Windows PlaySound failed.\' }; if ($i -lt ($count - 1) -and $gap -gt 0) { Start-Sleep -Milliseconds $gap } }'
-    ].join('; ');
+    const script=windowsAudioHostScript();
     let meaningfulError=null; let missing=0;
     for(const command of ['powershell.exe','pwsh.exe']){
       const hostTag=command==='powershell.exe'?'winps':'pwsh';
       const dll=path.join(audioHostDir,`ClaudeSoundNative-${hostTag}-v1.dll`);
       const env={...process.env,CLAUDE_SOUND_FILE:file,CLAUDE_SOUND_NATIVE_DLL:dll,CLAUDE_SOUND_REPEAT:String(count),CLAUDE_SOUND_GAP_MS:String(gapMs)};
       const encoded=Buffer.from(script,'utf16le').toString('base64');
-      try{await spawnCaptured(command,['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-EncodedCommand',encoded],{env});return;}
+      try{await spawnCaptured(command,['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-EncodedCommand',encoded],{env,timeoutMs:audioPlaybackTimeoutMs(count,gapMs,durationMs)});return;}
       catch(error){if(error?.code==='ENOENT'){missing++;continue;}meaningfulError=error;log(`${command} audio attempt failed: ${error.message||error}`);}
     }
     if(meaningfulError) throw meaningfulError;
@@ -471,13 +494,13 @@ async function playRawWav(file, repeat=1, gap=0) {
     throw new Error('Windows could not play the WAV file.');
   }
   if(process.platform==='darwin'){
-    for(let i=0;i<count;i++){await spawnCaptured('afplay',[file]);if(i<count-1&&gapMs)await sleep(gapMs);}
+    for(let i=0;i<count;i++){await spawnCaptured('afplay',[file],{timeoutMs:audioPlaybackTimeoutMs(1,0,durationMs)});if(i<count-1&&gapMs)await sleep(gapMs);}
     return;
   }
   for(let i=0;i<count;i++){
     let lastError,played=false;
     for(const [cmd,args] of [['paplay',[file]],['ffplay',['-nodisp','-autoexit','-loglevel','quiet',file]],['aplay',[file]]]){
-      try{await spawnCaptured(cmd,args);played=true;break;}catch(error){lastError=error;}
+      try{await spawnCaptured(cmd,args,{timeoutMs:audioPlaybackTimeoutMs(1,0,durationMs)});played=true;break;}catch(error){lastError=error;}
     }
     if(!played) throw new Error(`No supported Linux WAV player is available. Install paplay (PulseAudio/PipeWire), ffplay, or aplay.${lastError?` Last error: ${lastError.message||lastError}`:''}`);
     if(i<count-1&&gapMs)await sleep(gapMs);
@@ -486,8 +509,9 @@ async function playRawWav(file, repeat=1, gap=0) {
 async function playAudioFile(file, volume, repeat) {
   const vol=Math.round(clamp(volume,0,200)); if(vol<=0)return;
   try{const stat=await fs.promises.stat(file);if(!stat.isFile())throw new Error('not a regular file');}catch(error){throw new Error(`Sound file is unavailable: ${file}${error?.message?` (${error.message})`:''}`);}
+  const sourceBuffer=await fs.promises.readFile(file); const {durationMs}=pcmWavInfo(sourceBuffer);
   const adjusted=await volumeAdjustedWav(file,vol); const count=Math.round(clamp(repeat,1,5)); const gap=Math.round(clamp(cfg().get('repeatGapMs',150),0,3000));
-  await playRawWav(adjusted,count,gap);
+  await playRawWav(adjusted,count,gap,durationMs);
 }
 function enqueuePlayback(task,label){
   if(queuedPlays>=MAX_QUEUED_PLAYS){log(`Dropping alert because playback backlog is full: ${label}`);return Promise.resolve(false);}
@@ -678,7 +702,7 @@ async function stopServer(invalidate=true,removeRegistration=true){
 
 function hookHandler(url){ return {type:'http',url,timeout:2}; }
 function claudeSettingsPath(){ return path.join(os.homedir(),'.claude','settings.json'); }
-function relayScriptPath(){ const base=extensionContext?.globalStorageUri?.fsPath || (process.env.CLAUDE_SOUND_ALERTS_TEST==='1'?path.join(os.tmpdir(),EXTENSION_TAG):null); if(!base)throw new Error('Extension global storage is not initialized.'); return path.join(base, process.platform==='win32' ? `${RELAY_TAG}.ps1` : `${RELAY_TAG}.sh`); }
+function relayScriptPath(){ const base=relayStoragePathOverride || extensionContext?.globalStorageUri?.fsPath; if(!base)throw new Error('Extension global storage is not initialized.'); return path.join(base, process.platform==='win32' ? `${RELAY_TAG}.ps1` : `${RELAY_TAG}.sh`); }
 async function ensureRelayScript(){
   const file=relayScriptPath(); await fs.promises.mkdir(path.dirname(file),{recursive:true});
   if(process.platform==='win32') {
@@ -898,12 +922,19 @@ function scanTopLevelJsoncObject(text){
   if(close<0)throw new Error('Claude settings JSON object is not closed.');
   return {open,close,members};
 }
-function formatJsoncValue(value,baseIndent,indentUnit){
+function formatJsoncValue(value,baseIndent,indentUnit,newline='\n'){
   const json=JSON.stringify(value,null,indentUnit);
-  return json.replace(/\n/g,'\n'+baseIndent);
+  return json.replace(/\n/g,newline+baseIndent);
+}
+function joinRemovalParts(left,right,newline){
+  let a=left.replace(/[ \t]+$/,'');
+  let b=right;
+  if(a.endsWith(newline)&&b.startsWith(newline)) b=b.slice(newline.length);
+  return a+b;
 }
 function patchTopLevelHooks(text,hooksValue){
   let raw=String(text||''); if(!raw.trim())raw='{}\n';
+  const newline=raw.includes('\r\n')?'\r\n':'\n';
   const parsed=scanTopLevelJsoncObject(raw);
   const existing=parsed.members.find(m=>m.key==='hooks');
   const hasHooks=hooksValue && typeof hooksValue==='object' && Object.keys(hooksValue).length>0;
@@ -912,7 +943,7 @@ function patchTopLevelHooks(text,hooksValue){
   const indentUnit=firstIndent || '  ';
   if(existing){
     if(hasHooks){
-      const formatted=formatJsoncValue(hooksValue,existing.indent,indentUnit);
+      const formatted=formatJsoncValue(hooksValue,existing.indent,indentUnit,newline);
       return raw.slice(0,existing.valueStart)+formatted+raw.slice(existing.valueEnd);
     }
     // Remove our now-empty top-level hooks member without consuming comments or
@@ -921,16 +952,20 @@ function patchTopLevelHooks(text,hooksValue){
     const index=parsed.members.indexOf(existing);
     const previous=index>0?parsed.members[index-1]:null;
     if(existing.trailingComma){
-      return raw.slice(0,existing.keyStart)+raw.slice(existing.valueEnd,existing.delimiter)+raw.slice(existing.delimiter+1);
+      const left=raw.slice(0,existing.keyStart);
+      const right=raw.slice(existing.valueEnd,existing.delimiter)+raw.slice(existing.delimiter+1);
+      return joinRemovalParts(left,right,newline);
     }
     if(previous?.trailingComma){
-      return raw.slice(0,previous.delimiter)+raw.slice(previous.delimiter+1,existing.keyStart)+raw.slice(existing.valueEnd);
+      const left=raw.slice(0,previous.delimiter);
+      const between=raw.slice(previous.delimiter+1,existing.keyStart).replace(/[ \t]+$/,'');
+      const right=raw.slice(existing.valueEnd);
+      return joinRemovalParts(left+between,right,newline);
     }
-    return raw.slice(0,existing.keyStart)+raw.slice(existing.valueEnd);
+    return joinRemovalParts(raw.slice(0,existing.keyStart),raw.slice(existing.valueEnd),newline);
   }
-  const formatted=formatJsoncValue(hooksValue,firstIndent,indentUnit);
+  const formatted=formatJsoncValue(hooksValue,firstIndent,indentUnit,newline);
   const after=raw.slice(parsed.close);
-  const newline=raw.includes('\r\n')?'\r\n':'\n';
   let before=raw.slice(0,parsed.close);
   const last=parsed.members[parsed.members.length-1];
   if(last && !last.trailingComma) before=raw.slice(0,last.valueEnd)+','+raw.slice(last.valueEnd,parsed.close);
@@ -1499,7 +1534,7 @@ async function activate(context){
   void startServer().then(async()=>{
     try{const status=await hookInstallStatus();if(status.oursAnywhere>0)await extensionContext.globalState.update('hooksManaged',true);if(status.oursAnywhere>0&&!status.complete)scheduleHookReconcile(800);}catch(error){log(`Initial hook reconciliation check failed: ${error.message||error}`);}
   });
-  log('Extension v1.6.1 activated. Secure dynamic multi-window routing is enabled; only enabled alerts are installed as Claude hooks.');
+  log('Extension v1.6.2 activated. Secure dynamic multi-window routing is enabled; only enabled alerts are installed as Claude hooks.');
 }
 async function deactivate(){
   if(hookReconcileTimer){clearTimeout(hookReconcileTimer);hookReconcileTimer=undefined;}
@@ -1510,7 +1545,8 @@ async function deactivate(){
   await stopServer(true,false);
 }
 const testApi=process.env.CLAUDE_SOUND_ALERTS_TEST==='1' ? {
-  EVENT_DEFS, parseClaudeSettingsText, patchTopLevelHooks, pcmWavInfo, scalePcmWav,
-  desiredHookGroups, desiredHookSignatures, ourHookSignatures, hookSignature, hasStoredEventSettingsFromInspection
+  EVENT_DEFS, parseClaudeSettingsText, patchTopLevelHooks, pcmWavInfo, scalePcmWav, audioPlaybackTimeoutMs, spawnCaptured, windowsAudioHostScript,
+  desiredHookGroups, desiredHookSignatures, ourHookSignatures, hookSignature, hasStoredEventSettingsFromInspection,
+  setTestStoragePath: value => { relayStoragePathOverride=value?path.resolve(String(value)):null; }
 } : null;
 module.exports=testApi?{activate,deactivate,__test:testApi}:{activate,deactivate};

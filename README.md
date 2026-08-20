@@ -1,8 +1,8 @@
-# Claude Code Sound Alerts v1.6.1
+# Claude Code Sound Alerts v1.6.2
 
 A VS Code extension that plays configurable sound alerts for Claude Code lifecycle events.
 
-Version 1.6.1 is a stability, security, and performance maintenance release on top of v1.6. It keeps the v1.5 multi-window design while hardening activation, hook installation, routing, audio playback, settings writes, and the control-panel state model.
+Version 1.6.2 is the final stability/polish pass on top of v1.6.1. It keeps the secure multi-window design and adds self-healing Windows audio locks, bounded audio-process timeouts, exact CRLF preservation, cleaner JSONC hook removal, and stronger adversarial regression tests.
 
 ## Defaults
 
@@ -12,6 +12,15 @@ On a fresh install only two alerts are enabled:
 - **Claude Finished** — Done Fanfare
 
 Every other alert starts **Off**. Use the **Minimal**, **Recommended**, or **Everything** presets, or enable individual events in the control panel.
+
+## What v1.6.2 fixes
+
+- Windows audio-host cache locks now self-heal after an interrupted compile; stale lockfiles older than 30 seconds are removed automatically.
+- Every external audio process has a bounded timeout, preventing a hung player from permanently blocking all later alerts. The timeout budget accounts for the WAV duration, repeats, and repeat gaps.
+- JSONC hook patching preserves CRLF files without introducing mixed LF-only lines.
+- Hook uninstall no longer leaves whitespace-only residue where the removed `hooks` member used to be.
+- The third-review test suite now hard-asserts CRLF fidelity and clean removal, covers all removal layouts and round trips, verifies the 2-second HTTP hook timeout, validates stale-lock recovery logic, and exercises a real hung-child timeout.
+- Relay-script production path resolution no longer contains a test-environment storage fallback.
 
 ## What v1.6.1 fixes
 
@@ -200,7 +209,7 @@ The source package includes scripts for:
 
 - `npm run check` — JavaScript syntax check
 - `npm run lint` — ESLint
-- `npm test` — smoke tests for JSONC hook patching, enabled-only hook generation, bundled WAV validation, gain processing, and manifest invariants
+- `npm test` — the smoke suite plus the 31-shape JSONC regression suite and third-review adversarial suite. Together they cover hook patch/install/uninstall idempotence, comment and CRLF preservation, all removal layouts, enabled-only hook generation, HTTP-hook timeouts, audio-process timeout behavior, stale Windows audio-lock recovery, bundled WAV validation, gain processing, and manifest invariants
 
 Development dependencies are declared for VS Code types and ESLint. The packaged VSIX excludes development/test files.
 

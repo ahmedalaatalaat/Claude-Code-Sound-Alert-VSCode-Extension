@@ -17,6 +17,7 @@ process.env.CLAUDE_SOUND_ALERTS_TEST = '1';
 const extension = require('../extension.js');
 Module._load = originalLoad;
 const t = extension.__test;
+t.setTestStoragePath(require('path').join(require('os').tmpdir(),'claude-sound-alerts-test'));
 
 const desired = {
   Stop: [{ hooks: [{ type: 'http', url: 'http://127.0.0.1:47391/claude-code-sound-alerts/hook/token', timeout: 2 }] }],

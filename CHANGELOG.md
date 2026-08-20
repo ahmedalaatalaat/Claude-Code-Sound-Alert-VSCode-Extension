@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.6.2
+
+- Added stale WinMM helper-lock recovery: abandoned audio-host `.lock` files older than 30 seconds are removed before compilation, preventing a permanent 5-second delay after an interrupted PowerShell compile.
+- Added bounded audio-process timeouts. Hung PowerShell, `afplay`, `paplay`, `ffplay`, or `aplay` processes are terminated so the global playback queue cannot stall permanently. Timeout budgets scale with WAV duration, repeat count, and repeat gap.
+- Preserved the original line-ending style when inserting or replacing JSONC hook values; CRLF Claude settings no longer gain LF-only lines.
+- Cleaned hook-member removal seams so uninstall no longer leaves whitespace-only residue lines.
+- Added a third-review regression suite covering all hook-removal index paths, comments, CRLF fidelity, install/uninstall/install stability, timeout behavior, and stale audio-lock recovery.
+- Strengthened the CRLF and whitespace tests from diagnostic notes into hard regression assertions.
+- Removed the relay-script test-storage fallback from production path resolution; tests no longer influence relay storage behavior.
+- Updated development documentation to describe all JSONC and adversarial regression suites.
+
 ## 1.6.1
 
 - Fixed ESLint 9 catch-parameter configuration; removed the stale `isOurHandlerFor` helper and added diagnostics when listener takeover binding loses a race.
