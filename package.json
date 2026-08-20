@@ -1,8 +1,8 @@
 {
   "name": "claude-code-sound-alerts",
   "displayName": "Claude Code Sound Alerts",
-  "description": "Play configurable sounds when Claude Code needs your input or finishes, with a built-in VS Code control panel.",
-  "version": "1.2.0",
+  "description": "Play fully configurable sounds for Claude Code lifecycle events, with per-event sound, volume boost, repeats, presets, and a VS Code control panel.",
+  "version": "1.3.0",
   "publisher": "local",
   "license": "MIT",
   "engines": {
@@ -19,15 +19,15 @@
     "alerts"
   ],
   "activationEvents": [
-    "onStartupFinished",
-    "onCommand:claudeSoundAlerts.installHooks",
-    "onCommand:claudeSoundAlerts.uninstallHooks",
-    "onCommand:claudeSoundAlerts.testQuestionSound",
-    "onCommand:claudeSoundAlerts.testFinishedSound",
     "onCommand:claudeSoundAlerts.configureSounds",
-    "onCommand:claudeSoundAlerts.setQuestionVolume",
+    "onCommand:claudeSoundAlerts.installHooks",
+    "onCommand:claudeSoundAlerts.openControlPanel",
     "onCommand:claudeSoundAlerts.setFinishedVolume",
-    "onCommand:claudeSoundAlerts.openControlPanel"
+    "onCommand:claudeSoundAlerts.setQuestionVolume",
+    "onCommand:claudeSoundAlerts.testFinishedSound",
+    "onCommand:claudeSoundAlerts.testQuestionSound",
+    "onCommand:claudeSoundAlerts.uninstallHooks",
+    "onStartupFinished"
   ],
   "main": "./extension.js",
   "contributes": {
@@ -75,6 +75,10 @@
       {
         "command": "claudeSoundAlerts.setFinishedVolume",
         "title": "Claude Sound Alerts: Set Finished Volume"
+      },
+      {
+        "command": "claudeSoundAlerts.addSoundToLibrary",
+        "title": "Claude Sound Alerts: Add WAV to Sound Library"
       }
     ],
     "configuration": {
@@ -95,47 +99,56 @@
         "claudeSoundAlerts.questionSoundEnabled": {
           "type": "boolean",
           "default": true,
-          "description": "Play the question sound when Claude needs your input."
+          "description": "Play the question sound when Claude needs your input.",
+          "deprecationMessage": "Use the v1.3 Claude Sound Alerts control panel. This setting is retained for v1.2 migration."
         },
         "claudeSoundAlerts.finishedSoundEnabled": {
           "type": "boolean",
           "default": true,
-          "description": "Play the finished sound when Claude completes a response."
+          "description": "Play the finished sound when Claude completes a response.",
+          "deprecationMessage": "Use the v1.3 Claude Sound Alerts control panel. This setting is retained for v1.2 migration."
         },
         "claudeSoundAlerts.alertOnAskUserQuestion": {
           "type": "boolean",
           "default": true,
-          "description": "Alert immediately when Claude uses AskUserQuestion."
+          "description": "Alert immediately when Claude uses AskUserQuestion.",
+          "deprecationMessage": "Use the v1.3 Claude Sound Alerts control panel. This setting is retained for v1.2 migration."
         },
         "claudeSoundAlerts.alertOnPermissionRequest": {
           "type": "boolean",
           "default": true,
-          "description": "Alert immediately when Claude asks for tool permission."
+          "description": "Alert immediately when Claude asks for tool permission.",
+          "deprecationMessage": "Use the v1.3 Claude Sound Alerts control panel. This setting is retained for v1.2 migration."
         },
         "claudeSoundAlerts.alertOnPlanApproval": {
           "type": "boolean",
           "default": true,
-          "description": "Alert when Claude asks you to approve exiting plan mode."
+          "description": "Alert when Claude asks you to approve exiting plan mode.",
+          "deprecationMessage": "Use the v1.3 Claude Sound Alerts control panel. This setting is retained for v1.2 migration."
         },
         "claudeSoundAlerts.alertOnMcpElicitation": {
           "type": "boolean",
           "default": true,
-          "description": "Alert when an MCP server asks for user input."
+          "description": "Alert when an MCP server asks for user input.",
+          "deprecationMessage": "Use the v1.3 Claude Sound Alerts control panel. This setting is retained for v1.2 migration."
         },
         "claudeSoundAlerts.alertOnBackgroundInput": {
           "type": "boolean",
           "default": true,
-          "description": "Alert when a background Claude agent reports that it needs input."
+          "description": "Alert when a background Claude agent reports that it needs input.",
+          "deprecationMessage": "Use the v1.3 Claude Sound Alerts control panel. This setting is retained for v1.2 migration."
         },
         "claudeSoundAlerts.questionSoundPath": {
           "type": "string",
           "default": "",
-          "description": "Path to a custom PCM WAV file used when Question Sound is set to Custom."
+          "description": "Path to a custom PCM WAV file used when Question Sound is set to Custom.",
+          "deprecationMessage": "Use the v1.3 Claude Sound Alerts control panel. This setting is retained for v1.2 migration."
         },
         "claudeSoundAlerts.finishedSoundPath": {
           "type": "string",
           "default": "",
-          "description": "Path to a custom PCM WAV file used when Finished Sound is set to Custom."
+          "description": "Path to a custom PCM WAV file used when Finished Sound is set to Custom.",
+          "deprecationMessage": "Use the v1.3 Claude Sound Alerts control panel. This setting is retained for v1.2 migration."
         },
         "claudeSoundAlerts.debounceMs": {
           "type": "number",
@@ -153,15 +166,17 @@
           "type": "number",
           "default": 70,
           "minimum": 0,
-          "maximum": 100,
-          "description": "Question/attention sound volume from 0 to 100 percent."
+          "maximum": 200,
+          "description": "Question/attention sound volume from 0 to 200 percent.",
+          "deprecationMessage": "Use the v1.3 Claude Sound Alerts control panel. This setting is retained for v1.2 migration."
         },
         "claudeSoundAlerts.finishedVolume": {
           "type": "number",
           "default": 50,
           "minimum": 0,
-          "maximum": 100,
-          "description": "Finished sound volume from 0 to 100 percent."
+          "maximum": 200,
+          "description": "Finished sound volume from 0 to 200 percent.",
+          "deprecationMessage": "Use the v1.3 Claude Sound Alerts control panel. This setting is retained for v1.2 migration."
         },
         "claudeSoundAlerts.questionSound": {
           "type": "string",
@@ -192,7 +207,8 @@
             "Alert Pulse",
             "Custom WAV file"
           ],
-          "description": "Sound used for question/attention alerts. The control panel is the easiest way to change this."
+          "description": "Sound used for question/attention alerts. The control panel is the easiest way to change this.",
+          "deprecationMessage": "Use the v1.3 Claude Sound Alerts control panel. This setting is retained for v1.2 migration."
         },
         "claudeSoundAlerts.finishedSound": {
           "type": "string",
@@ -223,7 +239,28 @@
             "Alert Pulse",
             "Custom WAV file"
           ],
-          "description": "Sound used for finished alerts. The control panel is the easiest way to change this."
+          "description": "Sound used for finished alerts. The control panel is the easiest way to change this.",
+          "deprecationMessage": "Use the v1.3 Claude Sound Alerts control panel. This setting is retained for v1.2 migration."
+        },
+        "claudeSoundAlerts.eventSettings": {
+          "type": "object",
+          "default": {},
+          "description": "Per-event alert settings managed by the Claude Sound Alerts control panel."
+        },
+        "claudeSoundAlerts.watchedFiles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Literal filenames to watch for Claude Code FileChanged alerts, for example .env or package.json. Reinstall hooks after changing this list."
+        },
+        "claudeSoundAlerts.repeatGapMs": {
+          "type": "number",
+          "default": 150,
+          "minimum": 0,
+          "maximum": 3000,
+          "description": "Pause in milliseconds between repeated alert sounds."
         }
       }
     }

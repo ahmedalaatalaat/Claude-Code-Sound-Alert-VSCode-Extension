@@ -1,24 +1,28 @@
 # Changelog
 
+## 1.3.0
+
+- Added per-event UI for the full current Claude Code hook lifecycle.
+- Added separate sound selection, 0–200% volume, and 1–5 repeats for each event.
+- Added digital audio boost above 100% with PCM clipping protection.
+- Added a persistent **My Sounds** library for user-imported WAV files.
+- Added Minimal, Recommended, and Everything enablement presets.
+- Added StopFailure, tool failure, permission denied, subagent, task, agent-team, context, session, configuration, directory, worktree removal, MCP, and other lifecycle alerts.
+- Added command-relay hooks for SessionStart and Setup, which do not support HTTP hooks.
+- Added configurable literal filenames for FileChanged.
+- Added WorktreeCreate safety protection so sound alerts cannot replace or break Claude Code's normal worktree creation.
+- Preserved migration from v1.2 Question/Finished settings.
+
 ## 1.2.0
 
-- Added a full VS Code control panel for sound configuration.
-- Added separate Question / Attention and Finished sound selectors.
-- Added 10 built-in sound presets.
-- Added independent 0–100% volume sliders.
-- Added Preview buttons directly in the UI.
-- Added custom PCM WAV selection from the UI.
-- Added global enable/disable and per-alert enable toggles.
-- Added Install Hooks / Remove Hooks buttons and hook/listener status.
-- Added a clickable **Claude Alerts** status-bar item.
-- Replaced Windows WPF `MediaPlayer` playback with volume-adjusted PCM WAV + `System.Media.SoundPlayer`.
-- Added detailed Windows playback diagnostics instead of only `powershell.exe exited with code 1`.
-- Preserved v1.1 custom sound paths for backward compatibility.
+- Added VS Code control panel.
+- Added 10 built-in sounds.
+- Added independent Question and Finished volume controls.
+- Switched Windows WAV playback to System.Media.SoundPlayer.
 
 ## 1.1.0
 
-- Added independent Question and Finished volume settings.
-- Added configuration commands for sounds and volume.
+- Added separate Question and Finished volumes and sound selection.
 
 ## 1.0.0
 

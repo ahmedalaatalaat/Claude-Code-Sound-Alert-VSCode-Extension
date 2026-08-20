@@ -1,93 +1,95 @@
 # Claude Code Sound Alerts
 
-A lightweight VS Code extension that plays configurable sounds when Claude Code needs your input and when Claude finishes responding.
+A VS Code extension that plays configurable WAV alerts for Claude Code lifecycle events.
 
-## v1.2 control panel
+## v1.3 highlights
 
-Open the UI by either:
+- Full event control panel covering the current Claude Code hook lifecycle.
+- Separate **sound**, **volume (0–200%)**, and **repeat count (1–5)** for each event.
+- **My Sounds** library: import a PCM WAV once and use it from every event dropdown.
+- Built-in Minimal, Recommended, and Everything enablement presets.
+- Built-in sounds: Soft Bell, Bright Ping, Double Ping, Gentle Chime, Digital Pop, Warm Knock, Success Chime, Calm Complete, Soft Pop, and Alert Pulse.
+- Windows playback uses `System.Media.SoundPlayer` with PCM WAV preprocessing for independent volume and digital boost.
+- Global mute, optional VS Code popups, repeat-gap control, hook status, and listener status.
 
-- Clicking **Claude Alerts** in the VS Code status bar, or
-- Running **Claude Sound Alerts: Open Control Panel** from the Command Palette.
+## Events
 
-The control panel lets you configure everything visually:
+The UI includes:
 
-- Separate sound for **Question / Attention**
-- Separate sound for **Finished**
-- Independent **0–100% volume sliders**
-- Preview buttons
-- Enable/disable each alert type
-- Global enable/disable
-- Optional VS Code visual notifications
-- Install/remove Claude Code hooks
-- Hook/listener status
-- Browse for a custom WAV file
+- Ask User Question and Plan Approval (special `PreToolUse` cases)
+- SessionStart
+- Setup
+- InstructionsLoaded
+- UserPromptSubmit
+- UserPromptExpansion
+- MessageDisplay
+- PreToolUse
+- PermissionRequest
+- PostToolUse
+- PostToolUseFailure
+- PostToolBatch
+- PermissionDenied
+- Notification
+- SubagentStart
+- SubagentStop
+- TaskCreated
+- TaskCompleted
+- Stop
+- StopFailure
+- TeammateIdle
+- ConfigChange
+- CwdChanged
+- DirectoryAdded
+- FileChanged
+- WorktreeCreate (shown but safety-protected; see below)
+- WorktreeRemove
+- PreCompact
+- PostCompact
+- SessionEnd
+- Elicitation
+- ElicitationResult
 
-## Built-in sounds
+### WorktreeCreate safety protection
 
-v1.2 ships with 10 sounds:
+Claude Code treats a configured `WorktreeCreate` hook as a replacement for its normal worktree creation behavior, and that hook must create and return a valid worktree path. Sound Alerts therefore shows this event in the UI but deliberately does not install a listener for it, to avoid breaking Claude worktrees.
 
-- Soft Bell
-- Bright Ping
-- Double Ping
-- Gentle Chime
-- Digital Pop
-- Warm Knock
-- Success Chime
-- Calm Complete
-- Soft Pop
-- Alert Pulse
+### FileChanged
 
-You can use any built-in sound for either Question / Attention or Finished.
+Claude Code requires literal filenames to watch. Enter them in the control panel, for example:
 
-## Windows audio fix in v1.2
+`.env, package.json, pyproject.toml`
 
-Windows playback no longer uses WPF `MediaPlayer`.
-
-The extension now:
-
-1. Reads the selected PCM WAV itself.
-2. Creates a cached volume-adjusted WAV for the selected 0–100% level.
-3. Plays it with Windows `System.Media.SoundPlayer` through PowerShell.
-
-This keeps Question and Finished volumes independent without changing Windows master volume and is more reliable for standard WAV notification sounds.
-
-Custom sounds should be standard PCM WAV files. The extension validates custom files before accepting them and provides clearer playback errors in the output log.
-
-## What it detects
-
-**Needs your input**
-
-- `AskUserQuestion` immediately via `PreToolUse`
-- Tool approval requests via `PermissionRequest`
-- `ExitPlanMode` approval
-- MCP elicitation/input requests
-- Background-agent `agent_needs_input` notifications
-
-**Finished**
-
-- `Stop` when Claude finishes responding
-
-The extension uses Claude Code HTTP hooks pointed at a localhost-only listener inside VS Code. No hook data is sent to the internet by this extension.
+The extension automatically updates its installed hooks when this list changes.
 
 ## Install
 
-1. Install the `.vsix` in VS Code using **Extensions → … → Install from VSIX…**.
-2. Reload VS Code if requested.
-3. Click **Claude Alerts** in the status bar.
-4. Click **Install Hooks** in the control panel.
-5. Choose sounds and volume levels.
-6. Use **Preview** for each alert.
+1. In VS Code, open **Extensions**.
+2. Open the `...` menu and choose **Install from VSIX...**.
+3. Select the `.vsix` file.
+4. Reload VS Code if requested.
+5. Click **Claude Alerts** in the status bar.
+6. Click **Install / Update Hooks**.
 
-The hook installer edits your user-level Claude settings file at:
+The extension preserves unrelated settings and hook handlers in `~/.claude/settings.json`.
 
-- Windows: `%USERPROFILE%\\.claude\\settings.json`
-- macOS/Linux: `~/.claude/settings.json`
+## Sound library
 
-Existing Claude settings and unrelated hooks are preserved.
+Click **Add WAV to My Sounds...** in the control panel. The file is validated as uncompressed PCM WAV, copied into the extension's persistent global storage, and appears in every event's sound dropdown.
 
-## Notes
+Custom sounds support PCM WAV at 8, 16, 24, or 32-bit depth. If you have MP3/M4A/OGG audio, convert it to PCM WAV first.
 
-- VS Code needs to be open for the localhost listener to receive hooks and play sounds.
-- If another VS Code window already owns the configured localhost port, that window may receive the hook event.
-- Custom sounds currently use WAV for predictable cross-platform behavior and per-alert volume handling on Windows.
-- If playback fails, run **Claude Sound Alerts: Open Log**; v1.2 includes the underlying PowerShell error rather than only an exit code.
+## Volume and boost
+
+- 0% = silent
+- 1–100% = attenuation up to the WAV's original level
+- 101–200% = digital boost
+
+Boosting cannot bypass your operating system's master output volume and may clip/distort very loud source audio.
+
+## Repeat
+
+Every event can play its sound 1–5 times. The global **Repeat gap** controls the pause between repetitions.
+
+## Privacy
+
+Claude hooks send event JSON only to `127.0.0.1` on the configured local port. The extension does not intentionally transmit Claude event data to an external service.
