@@ -2,7 +2,7 @@
   "name": "claude-code-sound-alerts",
   "displayName": "Claude Code Sound Alerts",
   "description": "Play fully configurable sounds for Claude Code lifecycle events, with per-event sound, volume boost, repeats, presets, and a VS Code control panel.",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "publisher": "local",
   "license": "MIT",
   "engines": {
@@ -180,8 +180,9 @@
         },
         "claudeSoundAlerts.questionSound": {
           "type": "string",
-          "default": "soft-bell",
+          "default": "question-chime",
           "enum": [
+            "question-chime",
             "soft-bell",
             "bright-ping",
             "double-ping",
@@ -195,6 +196,7 @@
             "custom"
           ],
           "enumDescriptions": [
+            "Question Chime",
             "Soft Bell",
             "Bright Ping",
             "Double Ping",
@@ -214,6 +216,7 @@
           "type": "string",
           "default": "success-chime",
           "enum": [
+            "question-chime",
             "soft-bell",
             "bright-ping",
             "double-ping",
@@ -227,6 +230,7 @@
             "custom"
           ],
           "enumDescriptions": [
+            "Question Chime",
             "Soft Bell",
             "Bright Ping",
             "Double Ping",

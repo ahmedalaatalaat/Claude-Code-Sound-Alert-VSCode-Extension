@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.1
+
+- Added the user-provided **Question Chime** as a built-in sound preset.
+- Made Question Chime the default sound for **Ask User Question**.
+- Converted the supplied MP3 to trimmed 44.1 kHz, stereo, 16-bit PCM WAV for reliable Windows playback.
+- Preserved existing per-event volume and repeat settings during the sound migration.
+
 ## 1.3.0
 
 - Added per-event UI for the full current Claude Code hook lifecycle.

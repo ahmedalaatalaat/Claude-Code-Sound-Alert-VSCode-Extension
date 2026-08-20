@@ -11,6 +11,7 @@ const { spawn } = require('child_process');
 const EXTENSION_TAG = 'claude-code-sound-alerts';
 const RELAY_TAG = 'claude-sound-alerts-relay';
 const SOUND_PRESETS = [
+  { id: 'question-chime', label: 'Question Chime' },
   { id: 'soft-bell', label: 'Soft Bell' },
   { id: 'bright-ping', label: 'Bright Ping' },
   { id: 'double-ping', label: 'Double Ping' },
@@ -29,7 +30,7 @@ const PRESET_IDS = new Set(SOUND_PRESETS.map(s => s.id));
 // Claude Code's default worktree creation and requires the hook to create/return
 // a real worktree path. FileChanged requires literal filenames to watch.
 const EVENT_DEFS = [
-  { id:'askUserQuestion', hookEvent:'PreToolUse', virtual:true, category:'Attention', label:'Ask User Question', description:'Claude calls AskUserQuestion and waits for your answer.', defaultEnabled:true, sound:'soft-bell', volume:75, repeat:2 },
+  { id:'askUserQuestion', hookEvent:'PreToolUse', virtual:true, category:'Attention', label:'Ask User Question', description:'Claude calls AskUserQuestion and waits for your answer.', defaultEnabled:true, sound:'question-chime', volume:75, repeat:2 },
   { id:'exitPlanMode', hookEvent:'PreToolUse', virtual:true, category:'Attention', label:'Plan Approval', description:'Claude asks to leave plan mode / approve the plan.', defaultEnabled:true, sound:'bright-ping', volume:75, repeat:2 },
   { id:'sessionStart', hookEvent:'SessionStart', category:'Session', label:'Session Started', description:'A Claude Code session starts or resumes.', defaultEnabled:false, sound:'gentle-chime', volume:35, repeat:1, transport:'command' },
   { id:'setup', hookEvent:'Setup', category:'Session', label:'Setup', description:'Claude Code setup/init/maintenance hook fires.', defaultEnabled:false, sound:'digital-pop', volume:30, repeat:1, transport:'command' },
@@ -490,6 +491,17 @@ async function removeCustomSound(id){
   await cfg().update('eventSettings',raw,vscode.ConfigurationTarget.Global); await sendUiState();
 }
 
+async function migrateV131QuestionSound(){
+  if(extensionContext.globalState.get('v131QuestionSoundApplied',false))return;
+  const raw={...(cfg().get('eventSettings',{})||{})};
+  const current=raw.askUserQuestion&&typeof raw.askUserQuestion==='object'?raw.askUserQuestion:{};
+  const def=EVENT_MAP.get('askUserQuestion');
+  raw.askUserQuestion={...defaultEventSetting(def),...current,sound:'question-chime'};
+  await cfg().update('eventSettings',raw,vscode.ConfigurationTarget.Global);
+  await extensionContext.globalState.update('v131QuestionSoundApplied',true);
+  log('Set the user-provided Question Chime as the Ask User Question sound.');
+}
+
 async function migrateV12Settings(){
   if(extensionContext.globalState.get('v13MigrationDone',false))return;
   const legacyKeys=['questionSound','finishedSound','questionVolume','finishedVolume','questionSoundEnabled','finishedSoundEnabled','questionSoundPath','finishedSoundPath'];
@@ -583,6 +595,7 @@ function updateStatusBar(){if(!statusItem)return;if(!cfg().get('enabled',true)){
 async function activate(context){
   extensionContext=context; output=vscode.window.createOutputChannel('Claude Code Sound Alerts'); context.subscriptions.push(output);
   await migrateV12Settings();
+  await migrateV131QuestionSound();
   statusItem=vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right,100); statusItem.command='claudeSoundAlerts.openControlPanel'; statusItem.show(); context.subscriptions.push(statusItem); updateStatusBar();
   context.subscriptions.push(vscode.commands.registerCommand('claudeSoundAlerts.installHooks',()=>installHooks(true)));
   context.subscriptions.push(vscode.commands.registerCommand('claudeSoundAlerts.uninstallHooks',()=>uninstallHooks(true)));
@@ -601,7 +614,7 @@ async function activate(context){
     if(event.affectsConfiguration('claudeSoundAlerts.enabled')||event.affectsConfiguration('claudeSoundAlerts.serverPort'))startServer();
     if(event.affectsConfiguration('claudeSoundAlerts')){void sendUiState();updateStatusBar();}
   }));
-  startServer(); log('Extension v1.3 activated. Open the Claude Alerts control panel from the status bar.');
+  startServer(); log('Extension v1.3.1 activated. Open the Claude Alerts control panel from the status bar.');
 }
 function deactivate(){stopServer();}
 module.exports={activate,deactivate};

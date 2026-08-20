@@ -2,13 +2,14 @@
 
 A VS Code extension that plays configurable WAV alerts for Claude Code lifecycle events.
 
-## v1.3 highlights
+## v1.3.1 highlights
 
+- Added the user-provided **Question Chime** as a built-in preset and made it the default for **Ask User Question**.
 - Full event control panel covering the current Claude Code hook lifecycle.
 - Separate **sound**, **volume (0–200%)**, and **repeat count (1–5)** for each event.
 - **My Sounds** library: import a PCM WAV once and use it from every event dropdown.
 - Built-in Minimal, Recommended, and Everything enablement presets.
-- Built-in sounds: Soft Bell, Bright Ping, Double Ping, Gentle Chime, Digital Pop, Warm Knock, Success Chime, Calm Complete, Soft Pop, and Alert Pulse.
+- Built-in sounds: Question Chime, Soft Bell, Bright Ping, Double Ping, Gentle Chime, Digital Pop, Warm Knock, Success Chime, Calm Complete, Soft Pop, and Alert Pulse.
 - Windows playback uses `System.Media.SoundPlayer` with PCM WAV preprocessing for independent volume and digital boost.
 - Global mute, optional VS Code popups, repeat-gap control, hook status, and listener status.
 
