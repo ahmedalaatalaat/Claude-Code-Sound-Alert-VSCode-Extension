@@ -1,0 +1,135 @@
+{
+  "name": "claude-code-sound-alerts",
+  "displayName": "Claude Code Sound Alerts",
+  "description": "Play sounds when Claude Code needs your input or finishes responding.",
+  "version": "1.0.0",
+  "publisher": "local",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "claude",
+    "claude code",
+    "sound",
+    "notification",
+    "alerts"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onCommand:claudeSoundAlerts.installHooks",
+    "onCommand:claudeSoundAlerts.uninstallHooks",
+    "onCommand:claudeSoundAlerts.testQuestionSound",
+    "onCommand:claudeSoundAlerts.testFinishedSound"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "claudeSoundAlerts.installHooks",
+        "title": "Claude Sound Alerts: Install Claude Code Hooks"
+      },
+      {
+        "command": "claudeSoundAlerts.uninstallHooks",
+        "title": "Claude Sound Alerts: Remove Claude Code Hooks"
+      },
+      {
+        "command": "claudeSoundAlerts.testQuestionSound",
+        "title": "Claude Sound Alerts: Test Question Sound"
+      },
+      {
+        "command": "claudeSoundAlerts.testFinishedSound",
+        "title": "Claude Sound Alerts: Test Finished Sound"
+      },
+      {
+        "command": "claudeSoundAlerts.selectQuestionSound",
+        "title": "Claude Sound Alerts: Select Question Sound"
+      },
+      {
+        "command": "claudeSoundAlerts.selectFinishedSound",
+        "title": "Claude Sound Alerts: Select Finished Sound"
+      },
+      {
+        "command": "claudeSoundAlerts.openLog",
+        "title": "Claude Sound Alerts: Open Log"
+      }
+    ],
+    "configuration": {
+      "title": "Claude Code Sound Alerts",
+      "properties": {
+        "claudeSoundAlerts.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable the local listener and sound alerts."
+        },
+        "claudeSoundAlerts.serverPort": {
+          "type": "number",
+          "default": 47391,
+          "minimum": 1024,
+          "maximum": 65535,
+          "description": "Localhost port used by Claude Code HTTP hooks. Reinstall hooks after changing this."
+        },
+        "claudeSoundAlerts.questionSoundEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Play the question sound when Claude needs your input."
+        },
+        "claudeSoundAlerts.finishedSoundEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Play the finished sound when Claude completes a response."
+        },
+        "claudeSoundAlerts.alertOnAskUserQuestion": {
+          "type": "boolean",
+          "default": true,
+          "description": "Alert immediately when Claude uses AskUserQuestion."
+        },
+        "claudeSoundAlerts.alertOnPermissionRequest": {
+          "type": "boolean",
+          "default": true,
+          "description": "Alert immediately when Claude asks for tool permission."
+        },
+        "claudeSoundAlerts.alertOnPlanApproval": {
+          "type": "boolean",
+          "default": true,
+          "description": "Alert when Claude asks you to approve exiting plan mode."
+        },
+        "claudeSoundAlerts.alertOnMcpElicitation": {
+          "type": "boolean",
+          "default": true,
+          "description": "Alert when an MCP server asks for user input."
+        },
+        "claudeSoundAlerts.alertOnBackgroundInput": {
+          "type": "boolean",
+          "default": true,
+          "description": "Alert when a background Claude agent reports that it needs input."
+        },
+        "claudeSoundAlerts.questionSoundPath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional path to a custom question/attention WAV file. Leave empty for the built-in sound."
+        },
+        "claudeSoundAlerts.finishedSoundPath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional path to a custom finished WAV file. Leave empty for the built-in sound."
+        },
+        "claudeSoundAlerts.debounceMs": {
+          "type": "number",
+          "default": 650,
+          "minimum": 0,
+          "maximum": 10000,
+          "description": "Suppress duplicate alerts of the same type inside this time window."
+        },
+        "claudeSoundAlerts.showVisualNotifications": {
+          "type": "boolean",
+          "default": false,
+          "description": "Also show a VS Code information notification when an alert fires."
+        }
+      }
+    }
+  }
+}
