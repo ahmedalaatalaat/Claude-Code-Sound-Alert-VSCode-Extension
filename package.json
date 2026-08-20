@@ -2,7 +2,7 @@
   "name": "claude-code-sound-alerts",
   "displayName": "Claude Code Sound Alerts",
   "description": "Play sounds when Claude Code needs your input or finishes responding.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "publisher": "local",
   "license": "MIT",
   "engines": {
@@ -23,7 +23,10 @@
     "onCommand:claudeSoundAlerts.installHooks",
     "onCommand:claudeSoundAlerts.uninstallHooks",
     "onCommand:claudeSoundAlerts.testQuestionSound",
-    "onCommand:claudeSoundAlerts.testFinishedSound"
+    "onCommand:claudeSoundAlerts.testFinishedSound",
+    "onCommand:claudeSoundAlerts.configureSounds",
+    "onCommand:claudeSoundAlerts.setQuestionVolume",
+    "onCommand:claudeSoundAlerts.setFinishedVolume"
   ],
   "main": "./extension.js",
   "contributes": {
@@ -55,6 +58,18 @@
       {
         "command": "claudeSoundAlerts.openLog",
         "title": "Claude Sound Alerts: Open Log"
+      },
+      {
+        "command": "claudeSoundAlerts.configureSounds",
+        "title": "Claude Sound Alerts: Configure Sounds & Volume"
+      },
+      {
+        "command": "claudeSoundAlerts.setQuestionVolume",
+        "title": "Claude Sound Alerts: Set Question Volume"
+      },
+      {
+        "command": "claudeSoundAlerts.setFinishedVolume",
+        "title": "Claude Sound Alerts: Set Finished Volume"
       }
     ],
     "configuration": {
@@ -128,6 +143,20 @@
           "type": "boolean",
           "default": false,
           "description": "Also show a VS Code information notification when an alert fires."
+        },
+        "claudeSoundAlerts.questionVolume": {
+          "type": "number",
+          "default": 70,
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Question/attention sound volume from 0 to 100 percent."
+        },
+        "claudeSoundAlerts.finishedVolume": {
+          "type": "number",
+          "default": 50,
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Finished sound volume from 0 to 100 percent."
         }
       }
     }

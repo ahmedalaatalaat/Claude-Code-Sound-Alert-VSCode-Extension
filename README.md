@@ -31,15 +31,19 @@ The hook installer edits your user-level Claude settings file at:
 
 Existing Claude settings and unrelated hooks are preserved.
 
-## Custom sounds
+## Custom sounds and volume
 
-Run either command:
-- **Claude Sound Alerts: Select Question Sound**
-- **Claude Sound Alerts: Select Finished Sound**
+Run **Claude Sound Alerts: Configure Sounds & Volume** for one place to change:
+- Question / Attention sound
+- Question / Attention volume (0–100%)
+- Finished sound
+- Finished volume (0–100%)
 
-Or set paths under VS Code Settings → **Claude Code Sound Alerts**.
+You can also use the individual Select Sound / Set Volume commands or edit the values under VS Code Settings → **Claude Code Sound Alerts**.
 
-Custom sounds should be WAV files. Windows playback uses `System.Media.SoundPlayer`. macOS uses `afplay`. Linux tries `paplay`, `aplay`, then `ffplay`.
+The question and finished alerts have independent volume levels. Volume is relative to your operating system master volume: 100% means full player volume, not louder than your computer's master volume.
+
+Custom WAV files are recommended for best cross-platform compatibility. On Windows, playback uses WPF `MediaPlayer` so the extension can set per-alert volume without changing Windows master volume. macOS uses `afplay`. Linux prefers `paplay` or `ffplay` for volume control and falls back to `aplay` if necessary.
 
 ## Settings
 
@@ -54,6 +58,8 @@ Custom sounds should be WAV files. Windows playback uses `System.Media.SoundPlay
 - `claudeSoundAlerts.alertOnBackgroundInput`
 - `claudeSoundAlerts.questionSoundPath`
 - `claudeSoundAlerts.finishedSoundPath`
+- `claudeSoundAlerts.questionVolume` (0–100)
+- `claudeSoundAlerts.finishedVolume` (0–100)
 - `claudeSoundAlerts.debounceMs`
 - `claudeSoundAlerts.showVisualNotifications`
 

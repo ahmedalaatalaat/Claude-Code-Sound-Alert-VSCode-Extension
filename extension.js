@@ -66,39 +66,71 @@ function spawnHidden(command, args) {
   });
 }
 
-async function playAudioFile(file) {
+function volumeFor(kind) {
+  const key = kind === 'question' ? 'questionVolume' : 'finishedVolume';
+  const fallback = kind === 'question' ? 70 : 50;
+  const value = Number(cfg().get(key, fallback));
+  if (!Number.isFinite(value)) return fallback;
+  return Math.max(0, Math.min(100, value));
+}
+
+async function playAudioFile(file, volumePercent) {
+  const volume = Math.max(0, Math.min(100, Number(volumePercent)));
+  if (volume <= 0) return;
+
   if (process.platform === 'win32') {
-    const script = "$p=$args[0]; $player=New-Object System.Media.SoundPlayer $p; $player.PlaySync()";
-    await spawnHidden('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script, file]);
+    // WPF MediaPlayer supports per-playback volume without changing Windows master volume.
+    const script = [
+      'Add-Type -AssemblyName PresentationCore',
+      '$p = New-Object System.Windows.Media.MediaPlayer',
+      '$p.Volume = [Math]::Max(0,[Math]::Min(1,([double]$args[1] / 100)))',
+      '$p.Open([Uri]::new($args[0]))',
+      '$deadline = (Get-Date).AddSeconds(5)',
+      'while (-not $p.NaturalDuration.HasTimeSpan -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 25 }',
+      '$p.Play()',
+      'if ($p.NaturalDuration.HasTimeSpan) {',
+      '  Start-Sleep -Milliseconds ([Math]::Ceiling($p.NaturalDuration.TimeSpan.TotalMilliseconds) + 100)',
+      '} else {',
+      '  Start-Sleep -Milliseconds 1500',
+      '}',
+      '$p.Close()'
+    ].join('; ');
+    await spawnHidden('powershell.exe', ['-NoProfile', '-NonInteractive', '-Sta', '-ExecutionPolicy', 'Bypass', '-Command', script, file, String(volume)]);
     return;
   }
 
   if (process.platform === 'darwin') {
-    await spawnHidden('afplay', [file]);
+    await spawnHidden('afplay', ['-v', String(volume / 100), file]);
     return;
   }
 
+  const pulseVolume = Math.round((volume / 100) * 65536);
   const players = [
-    ['paplay', [file]],
-    ['aplay', [file]],
-    ['ffplay', ['-nodisp', '-autoexit', '-loglevel', 'quiet', file]]
+    ['paplay', [`--volume=${pulseVolume}`, file]],
+    ['ffplay', ['-nodisp', '-autoexit', '-loglevel', 'quiet', '-volume', String(Math.round(volume)), file]],
+    // aplay has no portable per-process volume flag, so it is a last-resort fallback.
+    ['aplay', [file]]
   ];
   let lastError;
   for (const [command, args] of players) {
     try {
       await spawnHidden(command, args);
+      if (command === 'aplay' && volume !== 100) {
+        log('Linux aplay fallback cannot apply per-alert volume; system volume was used. Install paplay or ffplay for volume control.');
+      }
       return;
     } catch (error) {
       lastError = error;
     }
   }
-  throw lastError || new Error('No supported Linux audio player found (paplay, aplay, or ffplay).');
+  throw lastError || new Error('No supported Linux audio player found (paplay, ffplay, or aplay).');
 }
 
 async function play(kind, reason, force = false) {
   if (!force && !shouldPlay(kind)) return;
   const file = selectedSound(kind);
-  log(`${kind === 'question' ? 'Attention' : 'Finished'} alert: ${reason}`);
+  const volume = volumeFor(kind);
+  log(`${kind === 'question' ? 'Attention' : 'Finished'} alert: ${reason} (${volume}% volume)`);
 
   if (cfg().get('showVisualNotifications', false)) {
     const message = kind === 'question' ? `Claude needs you: ${reason}` : 'Claude finished responding.';
@@ -106,7 +138,7 @@ async function play(kind, reason, force = false) {
   }
 
   try {
-    await playAudioFile(file);
+    await playAudioFile(file, volume);
   } catch (error) {
     log(`Unable to play sound: ${error.message || error}`);
     vscode.window.showWarningMessage(`Claude Sound Alerts could not play audio: ${error.message || error}`);
@@ -340,6 +372,46 @@ async function chooseSound(kind) {
   await play(kind, `Testing selected ${kind} sound`, true);
 }
 
+async function chooseVolume(kind) {
+  const current = volumeFor(kind);
+  const label = kind === 'question' ? 'Question / Attention' : 'Finished';
+  const value = await vscode.window.showInputBox({
+    title: `Set ${label} Volume`,
+    prompt: 'Enter a volume from 0 to 100',
+    value: String(current),
+    validateInput: input => {
+      const n = Number(input);
+      if (!Number.isFinite(n) || n < 0 || n > 100) return 'Enter a number from 0 to 100.';
+      return undefined;
+    }
+  });
+  if (value === undefined) return;
+
+  const key = kind === 'question' ? 'questionVolume' : 'finishedVolume';
+  await cfg().update(key, Number(value), vscode.ConfigurationTarget.Global);
+  await play(kind, `Testing ${kind} sound at ${Number(value)}%`, true);
+}
+
+async function configureSounds() {
+  const choice = await vscode.window.showQuickPick([
+    { label: '$(question) Question / Attention sound', description: `${volumeFor('question')}% volume`, action: 'questionSound' },
+    { label: '$(unmute) Question / Attention volume', description: `${volumeFor('question')}%`, action: 'questionVolume' },
+    { label: '$(check) Finished sound', description: `${volumeFor('finished')}% volume`, action: 'finishedSound' },
+    { label: '$(unmute) Finished volume', description: `${volumeFor('finished')}%`, action: 'finishedVolume' },
+    { label: '$(settings-gear) Open all extension settings', action: 'settings' }
+  ], {
+    title: 'Claude Code Sound Alerts',
+    placeHolder: 'Choose what you want to change'
+  });
+  if (!choice) return;
+
+  if (choice.action === 'questionSound') return chooseSound('question');
+  if (choice.action === 'questionVolume') return chooseVolume('question');
+  if (choice.action === 'finishedSound') return chooseSound('finished');
+  if (choice.action === 'finishedVolume') return chooseVolume('finished');
+  if (choice.action === 'settings') return vscode.commands.executeCommand('workbench.action.openSettings', '@ext:local.claude-code-sound-alerts');
+}
+
 function activate(context) {
   extensionContext = context;
   output = vscode.window.createOutputChannel('Claude Code Sound Alerts');
@@ -352,6 +424,9 @@ function activate(context) {
   context.subscriptions.push(vscode.commands.registerCommand('claudeSoundAlerts.selectQuestionSound', () => chooseSound('question')));
   context.subscriptions.push(vscode.commands.registerCommand('claudeSoundAlerts.selectFinishedSound', () => chooseSound('finished')));
   context.subscriptions.push(vscode.commands.registerCommand('claudeSoundAlerts.openLog', () => output.show(true)));
+  context.subscriptions.push(vscode.commands.registerCommand('claudeSoundAlerts.configureSounds', configureSounds));
+  context.subscriptions.push(vscode.commands.registerCommand('claudeSoundAlerts.setQuestionVolume', () => chooseVolume('question')));
+  context.subscriptions.push(vscode.commands.registerCommand('claudeSoundAlerts.setFinishedVolume', () => chooseVolume('finished')));
 
   context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(event => {
     if (event.affectsConfiguration('claudeSoundAlerts.enabled') || event.affectsConfiguration('claudeSoundAlerts.serverPort')) {
