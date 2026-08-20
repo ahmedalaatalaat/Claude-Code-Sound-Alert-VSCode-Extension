@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.3
+
+- Added the user-selected Claude Sound Alerts artwork as the official VS Code extension icon.
+- The supplied PNG is packaged directly as `media/icon.png` and referenced by the extension manifest.
+
 ## 1.3.2
 
 - Added the user-provided **Done Fanfare** as a built-in sound and made it the default for **Claude Finished**.

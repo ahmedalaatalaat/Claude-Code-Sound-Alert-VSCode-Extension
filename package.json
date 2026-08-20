@@ -2,7 +2,7 @@
   "name": "claude-code-sound-alerts",
   "displayName": "Claude Code Sound Alerts",
   "description": "Play fully configurable sounds for Claude Code lifecycle events, with per-event sound, volume boost, repeats, presets, and a VS Code control panel.",
-  "version": "1.3.2",
+  "version": "1.3.3",
   "publisher": "local",
   "license": "MIT",
   "engines": {
@@ -276,5 +276,6 @@
         }
       }
     }
-  }
+  },
+  "icon": "media/icon.png"
 }
