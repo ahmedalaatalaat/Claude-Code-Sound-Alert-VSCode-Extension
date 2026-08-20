@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.6.1
+
+- Fixed ESLint 9 catch-parameter configuration; removed the stale `isOurHandlerFor` helper and added diagnostics when listener takeover binding loses a race.
+- Fixed JSONC value scanning so trailing comments/whitespace are not absorbed into the `hooks` replacement range.
+- Made top-level hook patching idempotent across comments, trailing commas, CRLF, nested objects/arrays, and last-member layouts.
+- Hook uninstall now removes the empty top-level `hooks` member instead of leaving `"hooks": {}`.
+- Fixed fresh-install migration ordering: v1.3.1/v1.3.2 sound migrations now skip when no stored `eventSettings` exist, allowing package defaults to remain implicit.
+- Improved Windows audio startup: cached host-specific WinMM P/Invoke assemblies in extension global storage and moved repeat playback into one PowerShell invocation.
+- Added a short hook-target probe cache and bypassed probing when the target is the current active listener.
+- Increased HTTP hook timeout from 1s to 2s.
+- Malformed local hook bodies/URLs are now logged and acknowledged with 204 so they do not surface Claude hook-error notices.
+- Imported sound previews now use the global bounded playback queue.
+- Added explicit HTTP `clientError` handling.
+- Replaced brittle source-text smoke assertions with behavior checks and added a 31-shape JSONC regression suite.
+- Documented the application-scope migration note for users with obsolete workspace-level event settings.
+
 ## 1.6.0
 
 - Hardened activation: commands/status register before migrations and each migration fails independently without aborting activation.

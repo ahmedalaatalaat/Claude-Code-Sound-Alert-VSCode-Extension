@@ -2,7 +2,7 @@
   "name": "claude-code-sound-alerts",
   "displayName": "Claude Code Sound Alerts",
   "description": "Reliable, secure, customizable Claude Code sound alerts with multi-window routing, per-event sounds, volume boost, repeats, and presets.",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "publisher": "local",
   "license": "MIT",
   "engines": {
@@ -151,7 +151,7 @@
   "scripts": {
     "check": "node --check extension.js",
     "lint": "eslint extension.js",
-    "test": "node test/smoke.js"
+    "test": "node test/smoke.js && node test/review2.js"
   },
   "devDependencies": {
     "@types/vscode": "^1.90.0",

@@ -96,6 +96,8 @@ const lastPlayedAt = new Map();
 let controlMutationQueue = Promise.resolve();
 let listenerMutationQueue = Promise.resolve();
 let hookShapeKey = '';
+const listenerProbeCache = new Map();
+const LISTENER_PROBE_CACHE_MS = 3000;
 
 function cfg() { return vscode.workspace.getConfiguration('claudeSoundAlerts'); }
 function log(message) { output?.appendLine(`[${new Date().toLocaleTimeString()}] ${message}`); }
@@ -170,6 +172,19 @@ function probeListener(port) {
     req.on('timeout',()=>{req.destroy();resolve({active:false,free:false});});
     req.on('error',error=>resolve({active:false,free:error?.code==='ECONNREFUSED'})); req.end();
   });
+}
+function invalidateProbeCache(port=null){
+  if(port===null) listenerProbeCache.clear();
+  else listenerProbeCache.delete(Number(port));
+}
+async function probeListenerCached(port,maxAgeMs=LISTENER_PROBE_CACHE_MS){
+  const p=Number(port);
+  if(p===listenerPort && listenerIsActive()) return {active:true,free:false,data:{ok:true,tag:EXTENSION_TAG,id:listenerId,pid:process.pid,port:p}};
+  const cached=listenerProbeCache.get(p);
+  if(cached && Date.now()-cached.at<maxAgeMs) return cached.result;
+  const result=await probeListener(p);
+  listenerProbeCache.set(p,{at:Date.now(),result});
+  return result;
 }
 async function activeListenerRecords() {
   const now=Date.now(), records=[];
@@ -246,10 +261,10 @@ async function switchListenerToPortNow(port){
   if(listenerPort===port && listenerIsActive()) return true;
   const generation=listenerGeneration;
   const candidate=createListenerServer(port);
-  try{await tryListen(candidate,port);}catch(error){try{candidate.close();}catch(_error){}return false;}
+  try{await tryListen(candidate,port);}catch(error){log(`Takeover bind on ${port} failed: ${error?.code||error?.message||error}`);try{candidate.close();}catch(_error){}return false;}
   if(generation!==listenerGeneration){try{candidate.close();candidate.closeAllConnections?.();}catch(_error){}return false;}
   const old=server, oldPort=listenerPort;
-  server=candidate; listenerPort=port; listenerMode='owned'; listenerDetail=`Took over configured router port ${port} without dropping the previous listener first.`;
+  server=candidate; listenerPort=port; listenerMode='owned'; invalidateProbeCache(); listenerDetail=`Took over configured router port ${port} without dropping the previous listener first.`;
   server.on('error',error=>log(`Listener runtime error on port ${port}: ${error.message||error}`));
   await writeListenerRegistration(); startHeartbeat(); updateStatusBar(); scheduleUiState();
   if(old){
@@ -423,19 +438,30 @@ function spawnCaptured(command, args, options={}) {
     });
   });
 }
-async function playRawWav(file) {
+async function playRawWav(file, repeat=1, gap=0) {
+  const count=Math.round(clamp(repeat,1,5));
+  const gapMs=Math.round(clamp(gap,0,3000));
   if(process.platform==='win32'){
-    // Use the native Windows PlaySound API instead of System.Media.SoundPlayer.
-    // This works from both Windows PowerShell 5.1 and PowerShell 7 without
-    // depending on System.Windows.Extensions being installed/loaded.
+    // Use the native Windows PlaySound API. The tiny P/Invoke assembly is cached
+    // in extension global storage, so subsequent alerts load a precompiled DLL
+    // instead of invoking the C# compiler. Repeats happen inside one PowerShell
+    // process, avoiding a process spawn/compile for every repetition.
+    const audioHostDir=path.join(extensionContext.globalStorageUri.fsPath,'audio-host');
     const script=[
       "$ErrorActionPreference='Stop'",
-      "Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public static class ClaudeSoundNative { [DllImport(\"winmm.dll\", CharSet=CharSet.Unicode, SetLastError=true)] public static extern bool PlaySound(string pszSound, IntPtr hmod, uint fdwSound); }'",
-      '$ok = [ClaudeSoundNative]::PlaySound($env:CLAUDE_SOUND_FILE, [IntPtr]::Zero, 0x00020002)',
-      "if (-not $ok) { throw 'Windows PlaySound failed.' }"
+      '$dll = $env:CLAUDE_SOUND_NATIVE_DLL',
+      '$dir = [IO.Path]::GetDirectoryName($dll)',
+      '[IO.Directory]::CreateDirectory($dir) | Out-Null',
+      "$src = 'using System; using System.Runtime.InteropServices; public static class ClaudeSoundNative { [DllImport(\"winmm.dll\", CharSet=CharSet.Unicode, SetLastError=true)] public static extern bool PlaySound(string pszSound, IntPtr hmod, uint fdwSound); }'; $loaded = $false; if (Test-Path -LiteralPath $dll) { try { Add-Type -Path $dll; $loaded = $true } catch { Remove-Item -LiteralPath $dll -Force -ErrorAction SilentlyContinue } }; if (-not $loaded) { $lock = $dll + '.lock'; $stream = $null; try { try { $stream = [IO.File]::Open($lock, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None) } catch {} ; if ($stream) { if (Test-Path -LiteralPath $dll) { Add-Type -Path $dll } else { Add-Type -TypeDefinition $src -OutputAssembly $dll } } else { $deadline = (Get-Date).AddSeconds(5); while (-not (Test-Path -LiteralPath $dll) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 50 }; if (Test-Path -LiteralPath $dll) { Add-Type -Path $dll } else { Add-Type -TypeDefinition $src } } } finally { if ($stream) { $stream.Dispose(); Remove-Item -LiteralPath $lock -Force -ErrorAction SilentlyContinue } } }",
+      '$count = [Math]::Max(1, [int]$env:CLAUDE_SOUND_REPEAT)',
+      '$gap = [Math]::Max(0, [int]$env:CLAUDE_SOUND_GAP_MS)',
+      'for ($i = 0; $i -lt $count; $i++) { $ok = [ClaudeSoundNative]::PlaySound($env:CLAUDE_SOUND_FILE, [IntPtr]::Zero, 0x00020002); if (-not $ok) { throw \'Windows PlaySound failed.\' }; if ($i -lt ($count - 1) -and $gap -gt 0) { Start-Sleep -Milliseconds $gap } }'
     ].join('; ');
-    const env={...process.env,CLAUDE_SOUND_FILE:file}; let meaningfulError=null; let missing=0;
+    let meaningfulError=null; let missing=0;
     for(const command of ['powershell.exe','pwsh.exe']){
+      const hostTag=command==='powershell.exe'?'winps':'pwsh';
+      const dll=path.join(audioHostDir,`ClaudeSoundNative-${hostTag}-v1.dll`);
+      const env={...process.env,CLAUDE_SOUND_FILE:file,CLAUDE_SOUND_NATIVE_DLL:dll,CLAUDE_SOUND_REPEAT:String(count),CLAUDE_SOUND_GAP_MS:String(gapMs)};
       const encoded=Buffer.from(script,'utf16le').toString('base64');
       try{await spawnCaptured(command,['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-EncodedCommand',encoded],{env});return;}
       catch(error){if(error?.code==='ENOENT'){missing++;continue;}meaningfulError=error;log(`${command} audio attempt failed: ${error.message||error}`);}
@@ -444,18 +470,24 @@ async function playRawWav(file) {
     if(missing===2) throw new Error('No Windows PowerShell audio host was found. Windows PowerShell 5.1 or PowerShell 7 is required for WAV playback.');
     throw new Error('Windows could not play the WAV file.');
   }
-  if(process.platform==='darwin'){await spawnCaptured('afplay',[file]);return;}
-  let lastError;
-  for(const [cmd,args] of [['paplay',[file]],['ffplay',['-nodisp','-autoexit','-loglevel','quiet',file]],['aplay',[file]]]){
-    try{await spawnCaptured(cmd,args);return;}catch(error){lastError=error;}
+  if(process.platform==='darwin'){
+    for(let i=0;i<count;i++){await spawnCaptured('afplay',[file]);if(i<count-1&&gapMs)await sleep(gapMs);}
+    return;
   }
-  throw new Error(`No supported Linux WAV player is available. Install paplay (PulseAudio/PipeWire), ffplay, or aplay.${lastError?` Last error: ${lastError.message||lastError}`:''}`);
+  for(let i=0;i<count;i++){
+    let lastError,played=false;
+    for(const [cmd,args] of [['paplay',[file]],['ffplay',['-nodisp','-autoexit','-loglevel','quiet',file]],['aplay',[file]]]){
+      try{await spawnCaptured(cmd,args);played=true;break;}catch(error){lastError=error;}
+    }
+    if(!played) throw new Error(`No supported Linux WAV player is available. Install paplay (PulseAudio/PipeWire), ffplay, or aplay.${lastError?` Last error: ${lastError.message||lastError}`:''}`);
+    if(i<count-1&&gapMs)await sleep(gapMs);
+  }
 }
 async function playAudioFile(file, volume, repeat) {
   const vol=Math.round(clamp(volume,0,200)); if(vol<=0)return;
   try{const stat=await fs.promises.stat(file);if(!stat.isFile())throw new Error('not a regular file');}catch(error){throw new Error(`Sound file is unavailable: ${file}${error?.message?` (${error.message})`:''}`);}
   const adjusted=await volumeAdjustedWav(file,vol); const count=Math.round(clamp(repeat,1,5)); const gap=Math.round(clamp(cfg().get('repeatGapMs',150),0,3000));
-  for(let i=0;i<count;i++){await playRawWav(adjusted);if(i<count-1&&gap)await sleep(gap);}
+  await playRawWav(adjusted,count,gap);
 }
 function enqueuePlayback(task,label){
   if(queuedPlays>=MAX_QUEUED_PLAYS){log(`Dropping alert because playback backlog is full: ${label}`);return Promise.resolve(false);}
@@ -546,10 +578,10 @@ async function playProfile(id, reason, force=false, overrides={}) {
 }
 
 function createListenerServer(port) {
-  return http.createServer((req,res)=>{
+  const listener=http.createServer((req,res)=>{
     if(!allowedHost(req,port)){res.writeHead(404);res.end();return;}
     let pathname='';
-    try{pathname=new URL(req.url||'/',`http://127.0.0.1:${port}`).pathname;}catch(_error){res.writeHead(400);res.end();return;}
+    try{pathname=new URL(req.url||'/',`http://127.0.0.1:${port}`).pathname;}catch(error){log(`Invalid listener URL ignored: ${error.message||error}`);res.writeHead(204,{'Connection':'close'});res.end();return;}
     if(req.method==='GET' && pathname===healthPath()){
       const payload=JSON.stringify({ok:true,tag:EXTENSION_TAG,id:listenerId,pid:process.pid,port});
       res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store','Content-Length':Buffer.byteLength(payload),'Connection':'close'});res.end(payload);return;
@@ -569,9 +601,11 @@ function createListenerServer(port) {
           else log(`Ignored/disabled hook event: ${brief(body.hook_event_name)||'unknown'}${body.tool_name?` / ${brief(body.tool_name)}`:''}${body.notification_type?` / ${brief(body.notification_type)}`:''}`);
         }else void routeIncomingHook(body);
         res.writeHead(204,{'Connection':'close'});res.end();
-      }catch(error){log(`Invalid hook request: ${error.message||error}`);res.writeHead(400,{'Connection':'close'});res.end();}
+      }catch(error){log(`Invalid hook request ignored: ${error.message||error}`);res.writeHead(204,{'Connection':'close'});res.end();}
     });
   });
+  listener.on('clientError',(_error,socket)=>{try{socket.destroy();}catch(_closeError){}});
+  return listener;
 }
 
 function tryListen(serverToUse, port) {
@@ -605,7 +639,7 @@ async function startServerNow(preferredPort=null) {
     try {
       await tryListen(candidate,port);
       if(generation!==listenerGeneration){try{candidate.close();}catch(_){} return;}
-      server=candidate; listenerPort=port; listenerMode='owned';
+      server=candidate; listenerPort=port; listenerMode='owned'; invalidateProbeCache();
       listenerDetail=port===base ? `Listening on port ${port}.` : (preferredPort===port ? `Listening on configured router port ${port}.` : `Port ${base} was unavailable; automatically switched to port ${port}.`);
       server.on('error',error=>{log(`Listener runtime error on port ${port}: ${error.message||error}`);});
       log(`Listening for Claude Code hooks at ${endpointFor(port)} (listener ${listenerId.slice(0,8)}).`);
@@ -631,6 +665,7 @@ async function stopServer(invalidate=true,removeRegistration=true){
   stopHeartbeat();
   if(removeRegistration) await removeListenerRegistration();
   const closing=server; server=undefined;
+  invalidateProbeCache();
   listenerPort=null;
   if(listenerMode!=='disabled'){listenerMode='inactive'; listenerDetail='';}
   if(closing){
@@ -641,9 +676,9 @@ async function stopServer(invalidate=true,removeRegistration=true){
   }
 }
 
-function hookHandler(url){ return {type:'http',url,timeout:1}; }
+function hookHandler(url){ return {type:'http',url,timeout:2}; }
 function claudeSettingsPath(){ return path.join(os.homedir(),'.claude','settings.json'); }
-function relayScriptPath(){ return path.join(extensionContext.globalStorageUri.fsPath, process.platform==='win32' ? `${RELAY_TAG}.ps1` : `${RELAY_TAG}.sh`); }
+function relayScriptPath(){ const base=extensionContext?.globalStorageUri?.fsPath || (process.env.CLAUDE_SOUND_ALERTS_TEST==='1'?path.join(os.tmpdir(),EXTENSION_TAG):null); if(!base)throw new Error('Extension global storage is not initialized.'); return path.join(base, process.platform==='win32' ? `${RELAY_TAG}.ps1` : `${RELAY_TAG}.sh`); }
 async function ensureRelayScript(){
   const file=relayScriptPath(); await fs.promises.mkdir(path.dirname(file),{recursive:true});
   if(process.platform==='win32') {
@@ -716,7 +751,6 @@ function isOurHandler(handler){
   }
   return false;
 }
-function isOurHandlerFor(handler,url){ return isOurHandler(handler) && handlerUrl(handler)===url; }
 function stableHandlerShape(handler){
   if(!handler || typeof handler!=='object') return null;
   if(handler.type==='http') return {type:'http',url:handler.url||'',timeout:Number(handler.timeout||0)};
@@ -823,21 +857,22 @@ function scanJsonStringEnd(text,index){
   throw new Error('Unterminated string in Claude settings.');
 }
 function scanJsoncValueEnd(text,index){
-  let obj=0,arr=0,inString=false,escape=false,line=false,block=false;
+  let obj=0,arr=0,inString=false,escape=false,line=false,block=false,lastSig=index;
   for(let i=index;i<text.length;i++){
     const c=text[i],n=text[i+1];
     if(line){if(c==='\n')line=false;continue;}
     if(block){if(c==='*'&&n==='/'){block=false;i++;}continue;}
-    if(inString){if(escape)escape=false;else if(c==='\\')escape=true;else if(c==='"')inString=false;continue;}
-    if(c==='"'){inString=true;continue;}
+    if(inString){lastSig=i+1;if(escape)escape=false;else if(c==='\\')escape=true;else if(c==='"')inString=false;continue;}
+    if(c==='"'){inString=true;lastSig=i+1;continue;}
     if(c==='/'&&n==='/'){line=true;i++;continue;}
     if(c==='/'&&n==='*'){block=true;i++;continue;}
-    if(c==='{'){obj++;continue;} if(c==='['){arr++;continue;}
-    if(c==='}'){if(obj>0){obj--;continue;}if(arr===0)return i;}
-    if(c===']'){if(arr>0){arr--;continue;}}
-    if(c===','&&obj===0&&arr===0)return i;
+    if(c==='{'){obj++;lastSig=i+1;continue;} if(c==='['){arr++;lastSig=i+1;continue;}
+    if(c==='}'){if(obj>0){obj--;lastSig=i+1;continue;}if(arr===0)return {end:i,valueEnd:lastSig};}
+    if(c===']'){if(arr>0){arr--;lastSig=i+1;continue;}}
+    if(c===','&&obj===0&&arr===0)return {end:i,valueEnd:lastSig};
+    if(!/\s/.test(c))lastSig=i+1;
   }
-  return text.length;
+  return {end:text.length,valueEnd:lastSig};
 }
 function scanTopLevelJsoncObject(text){
   let i=skipJsoncTrivia(text,0);
@@ -850,14 +885,14 @@ function scanTopLevelJsoncObject(text){
     const keyStart=i, keyEnd=scanJsonStringEnd(text,keyStart);
     let key; try{key=JSON.parse(text.slice(keyStart,keyEnd));}catch(error){throw new Error(`Invalid property name in Claude settings: ${error.message}`);}
     i=skipJsoncTrivia(text,keyEnd); if(text[i]!==':')throw new Error(`Expected ':' after ${key} in Claude settings.`); i++;
-    const valueStart=skipJsoncTrivia(text,i), valueEnd=scanJsoncValueEnd(text,valueStart);
+    const valueStart=skipJsoncTrivia(text,i), scannedValue=scanJsoncValueEnd(text,valueStart), valueEnd=scannedValue.valueEnd;
     let lineStart=text.lastIndexOf('\n',keyStart-1)+1; const indent=(text.slice(lineStart,keyStart).match(/^[ \t]*/)||[''])[0];
-    i=skipJsoncTrivia(text,valueEnd);
+    i=scannedValue.end;
     const trailingComma=text[i]===',';
-    members.push({key,keyStart,keyEnd,valueStart,valueEnd,indent,trailingComma});
+    members.push({key,keyStart,keyEnd,valueStart,valueEnd,indent,trailingComma,delimiter:i});
     if(trailingComma){i++;continue;}
     if(text[i]==='}'){close=i;break;}
-    // scanJsoncValueEnd stops at the delimiter, so any other token is invalid.
+    // scanJsoncValueEnd returns the structural delimiter separately from trailing trivia.
     throw new Error(`Expected ',' or '}' after ${key} in Claude settings.`);
   }
   if(close<0)throw new Error('Claude settings JSON object is not closed.');
@@ -876,9 +911,22 @@ function patchTopLevelHooks(text,hooksValue){
   const firstIndent=parsed.members[0]?.indent || '  ';
   const indentUnit=firstIndent || '  ';
   if(existing){
-    const value=hasHooks?hooksValue:{};
-    const formatted=formatJsoncValue(value,existing.indent,indentUnit);
-    return raw.slice(0,existing.valueStart)+formatted+raw.slice(existing.valueEnd);
+    if(hasHooks){
+      const formatted=formatJsoncValue(hooksValue,existing.indent,indentUnit);
+      return raw.slice(0,existing.valueStart)+formatted+raw.slice(existing.valueEnd);
+    }
+    // Remove our now-empty top-level hooks member without consuming comments or
+    // whitespace that follow the value. If it is the final member, remove the
+    // previous member's delimiter comma instead.
+    const index=parsed.members.indexOf(existing);
+    const previous=index>0?parsed.members[index-1]:null;
+    if(existing.trailingComma){
+      return raw.slice(0,existing.keyStart)+raw.slice(existing.valueEnd,existing.delimiter)+raw.slice(existing.delimiter+1);
+    }
+    if(previous?.trailingComma){
+      return raw.slice(0,previous.delimiter)+raw.slice(previous.delimiter+1,existing.keyStart)+raw.slice(existing.valueEnd);
+    }
+    return raw.slice(0,existing.keyStart)+raw.slice(existing.valueEnd);
   }
   const formatted=formatJsoncValue(hooksValue,firstIndent,indentUnit);
   const after=raw.slice(parsed.close);
@@ -958,7 +1006,7 @@ async function hookInstallStatus(){
     let targetActive=false,targetPathCurrent=false;
     if(target?.port){
       targetPathCurrent=target.path===hookPath();
-      if(targetPathCurrent){const probe=await probeListener(target.port);targetActive=!!probe.active;}
+      if(targetPathCurrent){const probe=await probeListenerCached(target.port);targetActive=!!probe.active;}
     }
     const complete=total===0 ? oursAnywhere===0 : current===total && extra===0 && targetActive && targetPathCurrent;
     const stale=oursAnywhere>0 && !complete;
@@ -1047,7 +1095,7 @@ async function addSoundToLibrary(preview=true){
     const dest=path.join(dir,`${id}.wav`); await fs.promises.writeFile(dest,buffer);
     let list=customSoundLibrary().filter(s=>s.id!==id); list.push({id,label,path:dest}); await extensionContext.globalState.update('customSoundLibrary',list);
     log(`Added custom sound to library: ${label} (${dest})`); await sendUiState();
-    if(preview) await playAudioFile(dest,100,1);
+    if(preview) await enqueuePlayback(()=>playAudioFile(dest,100,1),`Imported sound preview: ${label}`);
     return id;
   }catch(error){vscode.window.showErrorMessage(`Cannot add this sound: ${error.message||error}`);return null;}
 }
@@ -1060,8 +1108,15 @@ async function removeCustomSound(id){
   await cfg().update('eventSettings',raw,vscode.ConfigurationTarget.Global); await sendUiState();
 }
 
+function hasStoredEventSettingsFromInspection(inspected){
+  const some=value=>value&&typeof value==='object'&&Object.keys(value).length>0;
+  return !!(some(inspected?.globalValue)||some(inspected?.workspaceValue)||some(inspected?.workspaceFolderValue));
+}
+function hasStoredEventSettings(){return hasStoredEventSettingsFromInspection(cfg().inspect('eventSettings'));}
+
 async function migrateV131QuestionSound(){
   if(extensionContext.globalState.get('v131QuestionSoundApplied',false))return;
+  if(!hasStoredEventSettings()){await extensionContext.globalState.update('v131QuestionSoundApplied',true);log('v1.3.1 sound migration skipped on a fresh/default configuration.');return;}
   const raw={...(cfg().get('eventSettings',{})||{})};
   const current=raw.askUserQuestion&&typeof raw.askUserQuestion==='object'?raw.askUserQuestion:{};
   const def=EVENT_MAP.get('askUserQuestion');
@@ -1074,6 +1129,7 @@ async function migrateV131QuestionSound(){
 
 async function migrateV132DoneAndErrorSounds(){
   if(extensionContext.globalState.get('v132DoneAndErrorSoundsApplied',false))return;
+  if(!hasStoredEventSettings()){await extensionContext.globalState.update('v132DoneAndErrorSoundsApplied',true);log('v1.3.2 sound migration skipped on a fresh/default configuration.');return;}
   const raw={...(cfg().get('eventSettings',{})||{})};
   const applySound=(id,sound)=>{
     const def=EVENT_MAP.get(id);
@@ -1113,9 +1169,7 @@ async function migrateV12Settings(){
 
 async function migrateV140PrimaryDefaults(){
   if(extensionContext.globalState.get('v140PrimaryDefaultsDone')) return;
-  const inspected=cfg().inspect('eventSettings');
-  const hasExplicitValue=inspected?.globalValue!==undefined || inspected?.workspaceValue!==undefined || inspected?.workspaceFolderValue!==undefined;
-  if(!hasExplicitValue){
+  if(!hasStoredEventSettings()){
     await extensionContext.globalState.update('v140PrimaryDefaultsDone',true);
     log('v1.4 migration skipped on a fresh/default configuration; package defaults already enable only Question and Finished.');
     return;
@@ -1445,7 +1499,7 @@ async function activate(context){
   void startServer().then(async()=>{
     try{const status=await hookInstallStatus();if(status.oursAnywhere>0)await extensionContext.globalState.update('hooksManaged',true);if(status.oursAnywhere>0&&!status.complete)scheduleHookReconcile(800);}catch(error){log(`Initial hook reconciliation check failed: ${error.message||error}`);}
   });
-  log('Extension v1.6.0 activated. Secure dynamic multi-window routing is enabled; only enabled alerts are installed as Claude hooks.');
+  log('Extension v1.6.1 activated. Secure dynamic multi-window routing is enabled; only enabled alerts are installed as Claude hooks.');
 }
 async function deactivate(){
   if(hookReconcileTimer){clearTimeout(hookReconcileTimer);hookReconcileTimer=undefined;}
@@ -1457,6 +1511,6 @@ async function deactivate(){
 }
 const testApi=process.env.CLAUDE_SOUND_ALERTS_TEST==='1' ? {
   EVENT_DEFS, parseClaudeSettingsText, patchTopLevelHooks, pcmWavInfo, scalePcmWav,
-  desiredHookGroups, desiredHookSignatures, ourHookSignatures, hookSignature
+  desiredHookGroups, desiredHookSignatures, ourHookSignatures, hookSignature, hasStoredEventSettingsFromInspection
 } : null;
 module.exports=testApi?{activate,deactivate,__test:testApi}:{activate,deactivate};

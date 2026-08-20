@@ -31,12 +31,13 @@ const jsonc = `{
   "other": 7,
 }
 `;
-const nextHooks = { Stop: [{ hooks: [{ type:'http', url:'http://127.0.0.1:47391/claude-code-sound-alerts/hook/token', timeout:1 }] }] };
+const nextHooks = { Stop: [{ hooks: [{ type:'http', url:'http://127.0.0.1:47391/claude-code-sound-alerts/hook/token', timeout:2 }] }] };
 const patched = t.patchTopLevelHooks(jsonc, nextHooks);
 assert(patched.includes('// keep this user comment'));
 assert(patched.indexOf('"theme"') < patched.indexOf('"hooks"'));
 assert.strictEqual(t.parseClaudeSettingsText(patched).other, 7);
-assert.strictEqual(t.parseClaudeSettingsText(patched).hooks.Stop[0].hooks[0].timeout, 1);
+assert.strictEqual(t.parseClaudeSettingsText(patched).hooks.Stop[0].hooks[0].timeout, 2);
+assert.strictEqual(t.patchTopLevelHooks(patched, nextHooks), patched, 'hook patching must be idempotent');
 
 const noHooks = `{
   // existing formatting survives
@@ -47,6 +48,28 @@ const added = t.patchTopLevelHooks(noHooks, nextHooks);
 assert(added.includes('// existing formatting survives'));
 assert(t.parseClaudeSettingsText(added).hooks.Stop);
 
+assert(added.includes('"foo": true,'), 'new hooks member comma should stay with the previous value');
+assert(!added.includes('true\n,'), 'comma must not be placed on its own line');
+
+const hooksLastWithComment = `{
+  "model": "sonnet",
+  "hooks": {}
+  // keep my note about hooks
+}
+`;
+const patchedLast = t.patchTopLevelHooks(hooksLastWithComment, nextHooks);
+assert(patchedLast.includes('// keep my note about hooks'), 'trailing hook comment must survive replacement');
+assert.strictEqual(t.patchTopLevelHooks(patchedLast, nextHooks), patchedLast, 'last-member hook patch must be idempotent');
+const removedHooks = t.patchTopLevelHooks(patchedLast, {});
+assert(removedHooks.includes('// keep my note about hooks'), 'trailing hook comment must survive uninstall');
+assert(!Object.prototype.hasOwnProperty.call(t.parseClaudeSettingsText(removedHooks), 'hooks'), 'empty managed hooks member should be removed');
+
+// Fresh/default installs should not be treated as having stored event settings.
+assert.strictEqual(t.hasStoredEventSettingsFromInspection({}), false);
+assert.strictEqual(t.hasStoredEventSettingsFromInspection({globalValue:{}}), false);
+assert.strictEqual(t.hasStoredEventSettingsFromInspection({globalValue:{stop:{enabled:true}}}), true);
+assert.strictEqual(t.hasStoredEventSettingsFromInspection({workspaceValue:{askUserQuestion:{enabled:true}}}), true);
+
 // Minimal/default hook install is exactly Question + Finished.
 const settings = Object.fromEntries(t.EVENT_DEFS.map(d => [d.id, { enabled:false }]));
 settings.askUserQuestion = { enabled:true };
@@ -54,7 +77,7 @@ settings.stop = { enabled:true };
 const groups = t.desiredHookGroups('http://127.0.0.1:47391/claude-code-sound-alerts/hook/token', settings);
 assert.deepStrictEqual(Object.keys(groups).sort(), ['PreToolUse','Stop']);
 assert.strictEqual(groups.PreToolUse[0].matcher, 'AskUserQuestion');
-assert.strictEqual(groups.PreToolUse[0].hooks[0].timeout, 1);
+assert.strictEqual(groups.PreToolUse[0].hooks[0].timeout, 2);
 
 // All bundled alert WAVs are supported PCM and gain scaling remains valid.
 const soundsDir = path.join(__dirname, '..', 'media', 'sounds');
@@ -92,7 +115,7 @@ t.pcmWavInfo(t.scalePcmWav(extPcm, 125));
 
 // Manifest sanity checks for the stability/security release.
 const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
-assert.strictEqual(pkg.version, '1.6.0');
+assert.strictEqual(pkg.version, '1.6.1');
 assert.deepStrictEqual(pkg.activationEvents, ['onStartupFinished']);
 assert.strictEqual(pkg.contributes.configuration.properties['claudeSoundAlerts.serverPort'].scope, 'machine');
 assert.strictEqual(pkg.contributes.configuration.properties['claudeSoundAlerts.eventSettings'].scope, 'application');
@@ -122,15 +145,13 @@ assert.strictEqual(icon.toString('ascii',1,4), 'PNG');
 assert.strictEqual(icon.readUInt32BE(16), 256);
 assert.strictEqual(icon.readUInt32BE(20), 256);
 
-const source = fs.readFileSync(path.join(__dirname, '..', 'extension.js'), 'utf8');
-assert(!source.includes('retainContextWhenHidden:true'));
-assert(source.includes('localResourceRoots:['));
-assert(source.includes("globalStorageUri.fsPath"));
-assert(source.includes("closeAllConnections?.()"));
-assert(source.includes("agent:false"));
-assert(source.includes("allowedHost(req,port)"));
-assert(source.includes("MAX_QUEUED_PLAYS"));
-assert(source.includes("type:'command',command:'powershell.exe',args:"));
-assert(source.includes("timeout:10,async:true"));
+const commandSettings = Object.fromEntries(t.EVENT_DEFS.map(d => [d.id, { enabled:false }]));
+commandSettings.sessionStart = { enabled:true };
+const commandGroups = t.desiredHookGroups('http://127.0.0.1:47391/claude-code-sound-alerts/hook/token', commandSettings);
+const sessionHandler = commandGroups.SessionStart[0].hooks[0];
+assert.strictEqual(sessionHandler.type, 'command');
+assert.strictEqual(sessionHandler.timeout, 10);
+assert.strictEqual(sessionHandler.async, true);
+assert(Array.isArray(sessionHandler.args) && sessionHandler.args.length >= 2, 'SessionStart command hook should use exec-form args');
 
 console.log(`Smoke tests passed (${wavs.length} bundled WAVs validated).`);

@@ -1,8 +1,8 @@
-# Claude Code Sound Alerts v1.6.0
+# Claude Code Sound Alerts v1.6.1
 
 A VS Code extension that plays configurable sound alerts for Claude Code lifecycle events.
 
-Version 1.6 is a stability, security, and performance release. It keeps the v1.5 multi-window design while hardening activation, hook installation, routing, audio playback, settings writes, and the control-panel state model.
+Version 1.6.1 is a stability, security, and performance maintenance release on top of v1.6. It keeps the v1.5 multi-window design while hardening activation, hook installation, routing, audio playback, settings writes, and the control-panel state model.
 
 ## Defaults
 
@@ -13,7 +13,18 @@ On a fresh install only two alerts are enabled:
 
 Every other alert starts **Off**. Use the **Minimal**, **Recommended**, or **Everything** presets, or enable individual events in the control panel.
 
-## What v1.6 fixes
+## What v1.6.1 fixes
+
+- Fixed JSONC hook patching so comments/trivia after the `hooks` value are preserved, comma placement stays clean, uninstall removes an empty top-level `hooks` key, and repeated patching is byte-for-byte idempotent.
+- Fresh installs no longer trigger the older v1.3.1/v1.3.2 sound migrations before the v1.4 default guard; package defaults are now used without writing a large `eventSettings` object.
+- Windows audio caches the tiny host-specific WinMM P/Invoke assembly in extension global storage and plays all repeats inside one PowerShell process, avoiding repeated C# compilation/process startup.
+- Hook-status listener probes are cached briefly and skipped entirely when the target is this window's active listener.
+- HTTP hook timeout is now 2 seconds; malformed local hook bodies are logged and acknowledged with 204 so alert parsing never creates a Claude hook-error notice.
+- Imported-sound previews use the same bounded playback queue as live alerts.
+- Added explicit listener `clientError` handling and stronger second-review regression tests covering 31 JSONC layouts.
+- Fixed the ESLint 9 catch-parameter configuration, removed dead code, and log listener takeover bind failures.
+
+## What v1.6 fixed
 
 - Commands and the status bar are registered before migrations, so a migration/settings failure cannot make the extension disappear.
 - Event settings are application-scoped; listener ports are machine-scoped.
@@ -112,6 +123,8 @@ The managed hook configuration updates automatically when this list changes whil
 
 When upgrading from v1.5.x, v1.6 detects existing Sound Alerts hooks and automatically reconciles stale managed hooks after activation. If Claude settings are read-only or automatic repair fails, the control panel reports the error and you can use **Install / Update Hooks** manually.
 
+If an older release stored `claudeSoundAlerts.eventSettings` in workspace/folder settings, VS Code may now mark those old entries as invalid because event settings are application-scoped. Remove the obsolete workspace copy; the application-level settings shown in the Claude Alerts panel are authoritative.
+
 The extension preserves unrelated Claude hook handlers.
 
 ## Multi-window listener routing
@@ -169,7 +182,7 @@ Boost cannot bypass the operating system master volume and may clip/distort if t
 
 ## Audio requirements
 
-- **Windows:** Windows PowerShell 5.1 or PowerShell 7 (`pwsh`) is used only to invoke the native WinMM `PlaySound` API. The previous `System.Media.SoundPlayer` dependency is no longer used.
+- **Windows:** Windows PowerShell 5.1 or PowerShell 7 (`pwsh`) invokes the native WinMM `PlaySound` API. The tiny P/Invoke helper assembly is compiled once into extension global storage and reused; repeated alerts are played in one PowerShell process. The previous `System.Media.SoundPlayer` dependency is not used.
 - **macOS:** uses the built-in `afplay` command.
 - **Linux:** requires one of `paplay`, `ffplay`, or `aplay` to be available on `PATH`.
 
