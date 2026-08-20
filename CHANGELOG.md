@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.4.0
+
+- Redesigned the control panel for a cleaner, more compact VS Code-native layout.
+- Moved **Question** and **Finished** into a dedicated Primary Alerts section at the top.
+- Changed the default event enablement so only Question and Finished are on.
+- Fixed Minimal, Recommended, and Everything preset application.
+- Minimal now enables exactly Question + Finished.
+- Recommended enables Question + Finished plus important permission, failure, subagent, task, and MCP-input alerts.
+- Everything enables every safe supported event.
+- Added active preset highlighting and a Custom state after manual event changes.
+- Preserved per-event sound, volume, and repeat settings when applying presets.
+- Added a one-time v1.4 migration to switch existing installs to the new two-alert default.
+
 ## 1.3.3
 
 - Added the user-selected Claude Sound Alerts artwork as the official VS Code extension icon.

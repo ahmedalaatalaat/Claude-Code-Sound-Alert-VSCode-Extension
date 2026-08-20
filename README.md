@@ -2,8 +2,15 @@
 
 A VS Code extension that plays configurable WAV alerts for Claude Code lifecycle events.
 
-## v1.3.3 highlights
+## v1.4.0 highlights
 
+- Redesigned the control panel with **Question** and **Finished** as prominent Primary Alerts at the top.
+- Only **Question** and **Finished** are enabled by default; every other event starts off.
+- Fixed **Minimal / Recommended / Everything** presets and added visible active-preset state.
+- **Minimal** = Question + Finished only.
+- **Recommended** = Question + Finished plus important permission, error, subagent, task, and MCP alerts.
+- **Everything** = every safe hook event enabled.
+- Added a **Custom** state when you manually change event enablement outside a preset.
 - Added the selected artwork as the official VS Code extension icon.
 - Added the user-provided **Done Fanfare** and made it the default for **Claude Finished**.
 - Added the user-provided **Error Impact** and made it the default for **Tool Failed**, **Permission Denied**, and **Claude API / Turn Error**.

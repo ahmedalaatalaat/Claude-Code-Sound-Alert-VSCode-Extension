@@ -33,7 +33,7 @@ const PRESET_IDS = new Set(SOUND_PRESETS.map(s => s.id));
 // a real worktree path. FileChanged requires literal filenames to watch.
 const EVENT_DEFS = [
   { id:'askUserQuestion', hookEvent:'PreToolUse', virtual:true, category:'Attention', label:'Ask User Question', description:'Claude calls AskUserQuestion and waits for your answer.', defaultEnabled:true, sound:'question-chime', volume:75, repeat:2 },
-  { id:'exitPlanMode', hookEvent:'PreToolUse', virtual:true, category:'Attention', label:'Plan Approval', description:'Claude asks to leave plan mode / approve the plan.', defaultEnabled:true, sound:'bright-ping', volume:75, repeat:2 },
+  { id:'exitPlanMode', hookEvent:'PreToolUse', virtual:true, category:'Attention', label:'Plan Approval', description:'Claude asks to leave plan mode / approve the plan.', defaultEnabled:false, sound:'bright-ping', volume:75, repeat:2 },
   { id:'sessionStart', hookEvent:'SessionStart', category:'Session', label:'Session Started', description:'A Claude Code session starts or resumes.', defaultEnabled:false, sound:'gentle-chime', volume:35, repeat:1, transport:'command' },
   { id:'setup', hookEvent:'Setup', category:'Session', label:'Setup', description:'Claude Code setup/init/maintenance hook fires.', defaultEnabled:false, sound:'digital-pop', volume:30, repeat:1, transport:'command' },
   { id:'instructionsLoaded', hookEvent:'InstructionsLoaded', category:'Context', label:'Instructions Loaded', description:'CLAUDE.md or rule instructions are loaded.', defaultEnabled:false, sound:'soft-pop', volume:25, repeat:1 },
@@ -41,19 +41,19 @@ const EVENT_DEFS = [
   { id:'userPromptExpansion', hookEvent:'UserPromptExpansion', category:'Turn', label:'Prompt Expansion', description:'A command/skill expands into a prompt.', defaultEnabled:false, sound:'digital-pop', volume:25, repeat:1 },
   { id:'messageDisplay', hookEvent:'MessageDisplay', category:'Turn', label:'Message Display', description:'Assistant message text is displayed. This can fire frequently.', defaultEnabled:false, sound:'soft-pop', volume:15, repeat:1, noisy:true },
   { id:'preToolUse', hookEvent:'PreToolUse', category:'Tools', label:'Tool Starting', description:'Before any tool call, except special Question/Plan events above.', defaultEnabled:false, sound:'digital-pop', volume:20, repeat:1, noisy:true },
-  { id:'permissionRequest', hookEvent:'PermissionRequest', category:'Attention', label:'Permission Requested', description:'A tool needs your permission decision.', defaultEnabled:true, sound:'bright-ping', volume:80, repeat:2 },
+  { id:'permissionRequest', hookEvent:'PermissionRequest', category:'Attention', label:'Permission Requested', description:'A tool needs your permission decision.', defaultEnabled:false, sound:'bright-ping', volume:80, repeat:2 },
   { id:'postToolUse', hookEvent:'PostToolUse', category:'Tools', label:'Tool Succeeded', description:'After a tool call succeeds.', defaultEnabled:false, sound:'soft-pop', volume:20, repeat:1, noisy:true },
-  { id:'postToolUseFailure', hookEvent:'PostToolUseFailure', category:'Errors', label:'Tool Failed', description:'A Claude tool call fails.', defaultEnabled:true, sound:'error-impact', volume:90, repeat:2 },
+  { id:'postToolUseFailure', hookEvent:'PostToolUseFailure', category:'Errors', label:'Tool Failed', description:'A Claude tool call fails.', defaultEnabled:false, sound:'error-impact', volume:90, repeat:2 },
   { id:'postToolBatch', hookEvent:'PostToolBatch', category:'Tools', label:'Tool Batch Finished', description:'A full batch of parallel tool calls resolves.', defaultEnabled:false, sound:'calm-complete', volume:25, repeat:1 },
-  { id:'permissionDenied', hookEvent:'PermissionDenied', category:'Errors', label:'Permission Denied', description:'Auto mode denies a tool call.', defaultEnabled:true, sound:'error-impact', volume:85, repeat:2 },
-  { id:'notification', hookEvent:'Notification', category:'Attention', label:'Claude Notification', description:'Claude sends a notification, including input/idle/agent notifications.', defaultEnabled:true, sound:'soft-bell', volume:65, repeat:1 },
+  { id:'permissionDenied', hookEvent:'PermissionDenied', category:'Errors', label:'Permission Denied', description:'Auto mode denies a tool call.', defaultEnabled:false, sound:'error-impact', volume:85, repeat:2 },
+  { id:'notification', hookEvent:'Notification', category:'Attention', label:'Claude Notification', description:'Claude sends a notification, including input/idle/agent notifications.', defaultEnabled:false, sound:'soft-bell', volume:65, repeat:1 },
   { id:'subagentStart', hookEvent:'SubagentStart', category:'Agents', label:'Subagent Started', description:'A Claude subagent is spawned.', defaultEnabled:false, sound:'digital-pop', volume:25, repeat:1 },
-  { id:'subagentStop', hookEvent:'SubagentStop', category:'Agents', label:'Subagent Finished', description:'A Claude subagent finishes.', defaultEnabled:true, sound:'calm-complete', volume:45, repeat:1 },
+  { id:'subagentStop', hookEvent:'SubagentStop', category:'Agents', label:'Subagent Finished', description:'A Claude subagent finishes.', defaultEnabled:false, sound:'calm-complete', volume:45, repeat:1 },
   { id:'taskCreated', hookEvent:'TaskCreated', category:'Tasks', label:'Task Created', description:'Claude creates a task.', defaultEnabled:false, sound:'soft-pop', volume:25, repeat:1 },
-  { id:'taskCompleted', hookEvent:'TaskCompleted', category:'Tasks', label:'Task Completed', description:'Claude marks a task as completed.', defaultEnabled:true, sound:'success-chime', volume:45, repeat:1 },
+  { id:'taskCompleted', hookEvent:'TaskCompleted', category:'Tasks', label:'Task Completed', description:'Claude marks a task as completed.', defaultEnabled:false, sound:'success-chime', volume:45, repeat:1 },
   { id:'stop', hookEvent:'Stop', category:'Turn', label:'Claude Finished', description:'Claude finishes responding normally.', defaultEnabled:true, sound:'done-fanfare', volume:55, repeat:1 },
-  { id:'stopFailure', hookEvent:'StopFailure', category:'Errors', label:'Claude API / Turn Error', description:'The turn ends due to an API/model/auth/rate-limit error.', defaultEnabled:true, sound:'error-impact', volume:100, repeat:3 },
-  { id:'teammateIdle', hookEvent:'TeammateIdle', category:'Agents', label:'Teammate Idle', description:'An agent-team teammate is about to go idle.', defaultEnabled:true, sound:'soft-bell', volume:45, repeat:1 },
+  { id:'stopFailure', hookEvent:'StopFailure', category:'Errors', label:'Claude API / Turn Error', description:'The turn ends due to an API/model/auth/rate-limit error.', defaultEnabled:false, sound:'error-impact', volume:100, repeat:3 },
+  { id:'teammateIdle', hookEvent:'TeammateIdle', category:'Agents', label:'Teammate Idle', description:'An agent-team teammate is about to go idle.', defaultEnabled:false, sound:'soft-bell', volume:45, repeat:1 },
   { id:'configChange', hookEvent:'ConfigChange', category:'System', label:'Claude Config Changed', description:'Claude settings/policy/skills configuration changes.', defaultEnabled:false, sound:'digital-pop', volume:30, repeat:1 },
   { id:'cwdChanged', hookEvent:'CwdChanged', category:'System', label:'Working Directory Changed', description:'Claude changes the working directory.', defaultEnabled:false, sound:'soft-pop', volume:20, repeat:1 },
   { id:'directoryAdded', hookEvent:'DirectoryAdded', category:'System', label:'Directory Added', description:'A working directory is added during a session.', defaultEnabled:false, sound:'soft-pop', volume:25, repeat:1 },
@@ -63,7 +63,7 @@ const EVENT_DEFS = [
   { id:'preCompact', hookEvent:'PreCompact', category:'Context', label:'Before Context Compaction', description:'Claude is about to compact conversation context.', defaultEnabled:false, sound:'gentle-chime', volume:25, repeat:1 },
   { id:'postCompact', hookEvent:'PostCompact', category:'Context', label:'Context Compacted', description:'Context compaction has completed.', defaultEnabled:false, sound:'calm-complete', volume:30, repeat:1 },
   { id:'sessionEnd', hookEvent:'SessionEnd', category:'Session', label:'Session Ended', description:'A Claude Code session terminates.', defaultEnabled:false, sound:'calm-complete', volume:35, repeat:1 },
-  { id:'elicitation', hookEvent:'Elicitation', category:'Attention', label:'MCP Needs Input', description:'An MCP server requests user input.', defaultEnabled:true, sound:'bright-ping', volume:80, repeat:2 },
+  { id:'elicitation', hookEvent:'Elicitation', category:'Attention', label:'MCP Needs Input', description:'An MCP server requests user input.', defaultEnabled:false, sound:'bright-ping', volume:80, repeat:2 },
   { id:'elicitationResult', hookEvent:'ElicitationResult', category:'Attention', label:'MCP Input Answered', description:'A user response to MCP elicitation is ready.', defaultEnabled:false, sound:'soft-pop', volume:30, repeat:1 }
 ];
 const EVENT_MAP = new Map(EVENT_DEFS.map(e => [e.id, e]));
@@ -113,7 +113,7 @@ async function updateEventSetting(id, key, value) {
   else if (key === 'repeat') raw[id][key] = Math.round(clamp(value, 1, 5));
   else if (key === 'sound') raw[id][key] = String(value);
   else return;
-  await cfg().update('eventSettings', raw, vscode.ConfigurationTarget.Global);
+  await cfg().update('eventSettings', raw, eventSettingsTarget());
 }
 
 function presetSoundPath(id) {
@@ -490,7 +490,7 @@ async function removeCustomSound(id){
   await extensionContext.globalState.update('customSoundLibrary',current.filter(s=>s.id!==id)); try{await fs.promises.unlink(target.path);}catch(_){}
   const raw={...(cfg().get('eventSettings',{})||{})};
   for(const def of EVENT_DEFS) if(raw[def.id]?.sound===id) raw[def.id]={...raw[def.id],sound:def.sound};
-  await cfg().update('eventSettings',raw,vscode.ConfigurationTarget.Global); await sendUiState();
+  await cfg().update('eventSettings',raw,eventSettingsTarget()); await sendUiState();
 }
 
 async function migrateV131QuestionSound(){
@@ -544,18 +544,60 @@ async function migrateV12Settings(){
   await cfg().update('eventSettings',raw,vscode.ConfigurationTarget.Global); await extensionContext.globalState.update('v13MigrationDone',true); log('Migrated v1.2 sound choices to v1.3 event settings.');
 }
 
-const PRESET_GROUPS={
-  minimal:new Set(['askUserQuestion','permissionRequest','stop']),
-  recommended:new Set(['askUserQuestion','exitPlanMode','permissionRequest','permissionDenied','notification','postToolUseFailure','subagentStop','taskCompleted','stop','stopFailure','teammateIdle','elicitation'])
-};
-async function applyPreset(name){
-  const raw={...(cfg().get('eventSettings',{})||{})};
-  for(const def of EVENT_DEFS) {
-    if(def.unavailable) continue;
-    const enabled = name==='everything' ? true : (PRESET_GROUPS[name]?.has(def.id)||false);
-    raw[def.id]={...(raw[def.id]||{}),enabled};
+async function migrateV140PrimaryDefaults(){
+  if(extensionContext.globalState.get('v140PrimaryDefaultsDone')) return;
+  const current=allEventSettings();
+  const raw={};
+  for(const def of EVENT_DEFS){
+    const s=current[def.id]||defaultEventSetting(def);
+    raw[def.id]={...s,enabled:!def.unavailable && (def.id==='askUserQuestion'||def.id==='stop')};
   }
-  await cfg().update('eventSettings',raw,vscode.ConfigurationTarget.Global); await sendUiState();
+  await cfg().update('eventSettings',raw,eventSettingsTarget());
+  await extensionContext.globalState.update('v140PrimaryDefaultsDone',true);
+  log('v1.4: set default active alerts to Question and Claude Finished only.');
+}
+
+const PRESET_GROUPS={
+  minimal:new Set(['askUserQuestion','stop']),
+  recommended:new Set(['askUserQuestion','stop','permissionRequest','permissionDenied','postToolUseFailure','stopFailure','subagentStop','taskCompleted','elicitation'])
+};
+function enabledSetFromSettings(settings=allEventSettings()){
+  return new Set(EVENT_DEFS.filter(d=>!d.unavailable && settings[d.id]?.enabled).map(d=>d.id));
+}
+function sameSet(a,b){
+  if(a.size!==b.size)return false;
+  for(const v of a) if(!b.has(v)) return false;
+  return true;
+}
+function activePresetName(settings=allEventSettings()){
+  const enabled=enabledSetFromSettings(settings);
+  const all=new Set(EVENT_DEFS.filter(d=>!d.unavailable).map(d=>d.id));
+  if(sameSet(enabled,PRESET_GROUPS.minimal))return 'minimal';
+  if(sameSet(enabled,PRESET_GROUPS.recommended))return 'recommended';
+  if(sameSet(enabled,all))return 'everything';
+  return 'custom';
+}
+function eventSettingsTarget(){
+  const inspected=cfg().inspect('eventSettings');
+  if(inspected?.workspaceFolderValue!==undefined)return vscode.ConfigurationTarget.WorkspaceFolder;
+  if(inspected?.workspaceValue!==undefined)return vscode.ConfigurationTarget.Workspace;
+  return vscode.ConfigurationTarget.Global;
+}
+async function applyPreset(name){
+  if(!['minimal','recommended','everything'].includes(name)) throw new Error(`Unknown preset: ${name}`);
+  const current=allEventSettings();
+  const raw={};
+  const wanted = name==='everything'
+    ? new Set(EVENT_DEFS.filter(d=>!d.unavailable).map(d=>d.id))
+    : PRESET_GROUPS[name];
+  for(const def of EVENT_DEFS){
+    const s=current[def.id]||defaultEventSetting(def);
+    raw[def.id]={...s,enabled:!def.unavailable && wanted.has(def.id)};
+  }
+  await cfg().update('eventSettings',raw,eventSettingsTarget());
+  log(`Applied ${name} alert preset.`);
+  if(controlPanel) controlPanel.webview.postMessage({type:'toast',text:`${name[0].toUpperCase()+name.slice(1)} preset applied.`});
+  await sendUiState();
 }
 
 function nonce(){return crypto.randomBytes(16).toString('base64');}
@@ -564,23 +606,154 @@ async function getUiState(){
   return {
     enabled:cfg().get('enabled',true), visualNotifications:cfg().get('showVisualNotifications',false), repeatGapMs:Math.round(clamp(cfg().get('repeatGapMs',150),0,3000)),
     hooks:hs, listenerActive:Boolean(server?.listening), platform:process.platform,
-    events:EVENT_DEFS.map(d=>({...d,setting:eventSetting(d.id)})), categories:CATEGORIES, sounds:allSoundOptions(), watchedFiles:cfg().get('watchedFiles',[])||[]
+    events:EVENT_DEFS.map(d=>({...d,setting:eventSetting(d.id)})), categories:CATEGORIES, sounds:allSoundOptions(), watchedFiles:cfg().get('watchedFiles',[])||[], activePreset:activePresetName()
   };
 }
 async function sendUiState(){if(!controlPanel)return;try{await controlPanel.webview.postMessage({type:'state',state:await getUiState()});}catch(_){} }
 
 function controlPanelHtml(webview,initialState){
-  const n=nonce(); const stateJson=JSON.stringify(initialState).replace(/</g,'\\u003c');
-  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${n}';"><title>Claude Code Sound Alerts</title>
+  const n=nonce();
+  const stateJson=JSON.stringify(initialState).replace(/</g,'\\u003c');
+  const iconUri=webview.asWebviewUri(vscode.Uri.file(extensionContext.asAbsolutePath(path.join('media','icon.png'))));
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource}; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${n}';"><title>Claude Code Sound Alerts</title>
 <style>
-:root{color-scheme:light dark}body{font-family:var(--vscode-font-family);color:var(--vscode-foreground);background:var(--vscode-editor-background);margin:0;padding:22px}.wrap{max-width:1180px;margin:auto}h1{font-size:24px;margin:0 0 5px}.sub,.hint,.note{color:var(--vscode-descriptionForeground)}.sub{margin-bottom:16px}.bar,.panel,.event{border:1px solid var(--vscode-panel-border);border-radius:10px;background:var(--vscode-sideBar-background)}.bar,.panel{padding:14px;margin-bottom:14px}.bar{display:flex;gap:10px;justify-content:space-between;align-items:center;flex-wrap:wrap}.actions,.filters,.status{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.pill{border:1px solid var(--vscode-panel-border);border-radius:999px;padding:4px 9px;font-size:12px}.ok{color:var(--vscode-testing-iconPassed)}.warn{color:var(--vscode-editorWarning-foreground)}button,select,input{font:inherit}button{border:0;border-radius:6px;padding:7px 11px;color:var(--vscode-button-foreground);background:var(--vscode-button-background);cursor:pointer}button.secondary{color:var(--vscode-button-secondaryForeground);background:var(--vscode-button-secondaryBackground)}button:disabled{opacity:.5;cursor:not-allowed}select,input[type=text],input[type=number]{color:var(--vscode-input-foreground);background:var(--vscode-input-background);border:1px solid var(--vscode-input-border,var(--vscode-panel-border));border-radius:6px;padding:6px 8px}.panelgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.eventgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.event{padding:14px}.event.disabled-card{opacity:.7}.head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.title{font-weight:600}.badge{font-size:11px;border:1px solid var(--vscode-panel-border);border-radius:999px;padding:2px 7px}.hint{font-size:12px;margin:4px 0 12px}.controlgrid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(100px,1fr) 90px;gap:10px;align-items:end}.field label{display:block;font-size:12px;margin-bottom:4px}.field select,.field input[type=range]{width:100%;box-sizing:border-box}.volline{display:flex;gap:8px;align-items:center}.volline input{flex:1}.value{min-width:48px;text-align:right;font-size:12px}.eventactions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}.boost{color:var(--vscode-editorWarning-foreground);font-size:11px}.library-list{display:flex;gap:7px;flex-wrap:wrap;margin-top:9px}.soundchip{border:1px solid var(--vscode-panel-border);border-radius:999px;padding:4px 8px;font-size:12px}.search{min-width:220px}.filewatch{width:100%;box-sizing:border-box}.footerline{display:flex;gap:16px;flex-wrap:wrap;align-items:center}.toast{min-height:18px;margin-top:10px}.safety{color:var(--vscode-editorWarning-foreground);font-size:12px;margin-top:8px}@media(max-width:820px){.panelgrid,.eventgrid{grid-template-columns:1fr}.controlgrid{grid-template-columns:1fr}.search{min-width:0;width:100%}} 
-</style></head><body><div class="wrap"><h1>Claude Code Sound Alerts</h1><div class="sub">Configure a separate sound, 0–200% volume, and 1–5 repeats for Claude Code lifecycle events.</div>
-<div class="bar"><div class="status"><span id="hookStatus" class="pill"></span><span id="listenerStatus" class="pill"></span></div><div class="actions"><button id="installHooks">Install / Update Hooks</button><button id="removeHooks" class="secondary">Remove Hooks</button><button id="openLog" class="secondary">Open Log</button></div></div>
-<div class="panel"><div class="panelgrid"><div><div class="title">Alert presets</div><div class="hint">Presets only change which events are enabled; your sound/volume/repeat choices are preserved.</div><div class="actions"><button data-preset="minimal" class="secondary">Minimal</button><button data-preset="recommended">Recommended</button><button data-preset="everything" class="secondary">Everything</button></div></div><div><div class="title">Sound library</div><div class="hint">Built-in sounds plus WAV files you add yourself.</div><div class="actions"><button id="addSound">Add WAV to My Sounds…</button></div><div id="customSounds" class="library-list"></div></div></div></div>
-<div class="panel"><div class="panelgrid"><div><div class="title">FileChanged event</div><div class="hint">Claude requires literal filenames to watch. Separate names with commas, e.g. <code>.env, package.json</code>.</div><input id="watchedFiles" class="filewatch" type="text" placeholder=".env, package.json"></div><div><div class="title">Global controls</div><div class="footerline"><label><input id="enabled" type="checkbox"> Enable alerts</label><label><input id="visual" type="checkbox"> VS Code popups</label><label>Repeat gap <input id="gap" type="number" min="0" max="3000" step="50" style="width:80px"> ms</label></div><div class="note">Volume above 100% digitally boosts the WAV and may clip. Windows master volume still applies.</div></div></div></div>
-<div class="bar"><div class="filters"><input id="search" class="search" type="text" placeholder="Search events…"><select id="category"><option value="">All categories</option></select></div><div class="note">Very frequent events such as Message Display and Tool Starting are off by default.</div></div>
-<div id="events" class="eventgrid"></div><div id="toast" class="toast note" aria-live="polite"></div></div>
-<script nonce="${n}">(()=>{const vscode=acquireVsCodeApi();let state=${stateJson};const $=id=>document.getElementById(id);function post(action,extra={}){vscode.postMessage({action,...extra})}function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}function soundOptions(selected){return(state.sounds||[]).map(s=>'<option value="'+esc(s.id)+'" '+(s.id===selected?'selected':'')+'>'+esc(s.label)+(s.builtIn?'':' (My Sound)')+'</option>').join('')}function renderLibrary(){const custom=(state.sounds||[]).filter(s=>!s.builtIn);$('customSounds').innerHTML=custom.length?custom.map(s=>'<span class="soundchip">'+esc(s.label)+' <button class="secondary removeSound" data-id="'+esc(s.id)+'" title="Remove" style="padding:1px 5px">×</button></span>').join(''):'<span class="note">No personal sounds added yet.</span>';document.querySelectorAll('.removeSound').forEach(b=>b.addEventListener('click',()=>post('removeSound',{id:b.dataset.id})))}function eventCard(e){const s=e.setting||{};const locked=!!e.unavailable;return '<section class="event '+(locked?'disabled-card':'')+'" data-id="'+esc(e.id)+'" data-category="'+esc(e.category)+'" data-search="'+esc((e.label+' '+e.description+' '+e.hookEvent).toLowerCase())+'"><div class="head"><div><div class="title">'+esc(e.label)+'</div><span class="badge">'+esc(e.hookEvent)+'</span> <span class="badge">'+esc(e.category)+'</span></div><label><input class="evtEnabled" type="checkbox" '+(s.enabled?'checked':'')+' '+(locked?'disabled':'')+'> On</label></div><div class="hint">'+esc(e.description)+'</div>'+(locked?'<div class="safety">Not hooked: configuring WorktreeCreate would replace Claude Code’s normal worktree creation behavior.</div>':'<div class="controlgrid"><div class="field"><label>Sound</label><select class="evtSound">'+soundOptions(s.sound)+'</select></div><div class="field"><label>Volume <span class="boost">'+(s.volume>100?'BOOST':'')+'</span></label><div class="volline"><input class="evtVolume" type="range" min="0" max="200" value="'+s.volume+'"><span class="value">'+s.volume+'%</span></div></div><div class="field"><label>Repeat</label><select class="evtRepeat">'+[1,2,3,4,5].map(n=>'<option value="'+n+'" '+(n===s.repeat?'selected':'')+'>'+n+'×</option>').join('')+'</select></div></div><div class="eventactions"><button class="preview">Preview</button></div>')+'</section>'}function bindCards(){document.querySelectorAll('.event').forEach(card=>{const id=card.dataset.id;const en=card.querySelector('.evtEnabled'),sound=card.querySelector('.evtSound'),vol=card.querySelector('.evtVolume'),rep=card.querySelector('.evtRepeat'),preview=card.querySelector('.preview');if(en)en.addEventListener('change',e=>post('setEvent',{id,key:'enabled',value:e.target.checked}));if(sound)sound.addEventListener('change',e=>post('setEvent',{id,key:'sound',value:e.target.value}));if(vol){vol.addEventListener('input',e=>{card.querySelector('.value').textContent=e.target.value+'%';card.querySelector('.boost').textContent=Number(e.target.value)>100?'BOOST':''});vol.addEventListener('change',e=>post('setEvent',{id,key:'volume',value:Number(e.target.value)}))}if(rep)rep.addEventListener('change',e=>post('setEvent',{id,key:'repeat',value:Number(e.target.value)}));if(preview)preview.addEventListener('click',()=>post('preview',{id,volume:Number(vol.value),repeat:Number(rep.value),sound:sound.value}))})}function applyFilter(){const q=$('search').value.trim().toLowerCase(),cat=$('category').value;document.querySelectorAll('.event').forEach(c=>{c.style.display=(!q||c.dataset.search.includes(q))&&(!cat||c.dataset.category===cat)?'':'none'})}function render(){const hs=state.hooks||{};$('hookStatus').textContent=hs.complete?'Hooks installed ('+hs.installed+'/'+hs.total+')':'Hooks incomplete ('+hs.installed+'/'+hs.total+')';$('hookStatus').className='pill '+(hs.complete?'ok':'warn');$('listenerStatus').textContent=state.listenerActive?'Listener active':'Listener inactive';$('listenerStatus').className='pill '+(state.listenerActive?'ok':'warn');$('enabled').checked=!!state.enabled;$('visual').checked=!!state.visualNotifications;$('gap').value=state.repeatGapMs;$('watchedFiles').value=(state.watchedFiles||[]).join(', ');$('category').innerHTML='<option value="">All categories</option>'+(state.categories||[]).map(c=>'<option value="'+esc(c)+'">'+esc(c)+'</option>').join('');$('events').innerHTML=(state.events||[]).map(eventCard).join('');renderLibrary();bindCards();applyFilter()}$('installHooks').addEventListener('click',()=>post('installHooks'));$('removeHooks').addEventListener('click',()=>post('removeHooks'));$('openLog').addEventListener('click',()=>post('openLog'));$('addSound').addEventListener('click',()=>post('addSound'));document.querySelectorAll('[data-preset]').forEach(b=>b.addEventListener('click',()=>post('applyPreset',{name:b.dataset.preset})));$('enabled').addEventListener('change',e=>post('setGlobal',{key:'enabled',value:e.target.checked}));$('visual').addEventListener('change',e=>post('setGlobal',{key:'showVisualNotifications',value:e.target.checked}));$('gap').addEventListener('change',e=>post('setGlobal',{key:'repeatGapMs',value:Number(e.target.value)}));$('watchedFiles').addEventListener('change',e=>post('setWatchedFiles',{value:e.target.value}));$('search').addEventListener('input',applyFilter);$('category').addEventListener('change',applyFilter);window.addEventListener('message',ev=>{const m=ev.data;if(m.type==='state'){state=m.state;render()}if(m.type==='toast')$('toast').textContent=m.text||''});render()})();</script></body></html>`;
+:root{color-scheme:light dark}
+*{box-sizing:border-box}
+body{font-family:var(--vscode-font-family);font-size:13px;color:var(--vscode-foreground);background:var(--vscode-editor-background);margin:0;padding:24px}
+.wrap{max-width:1220px;margin:0 auto}
+.hero{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;margin-bottom:18px}
+.brand{display:flex;gap:14px;align-items:center}
+.brand-icon{width:58px;height:58px;border-radius:14px;object-fit:cover;border:1px solid var(--vscode-panel-border)}
+h1{font-size:24px;line-height:1.2;margin:0 0 5px;font-weight:650}
+.sub,.hint,.note{color:var(--vscode-descriptionForeground)}
+.sub{font-size:13px}
+.toolbar,.panel,.event{border:1px solid var(--vscode-panel-border);background:var(--vscode-sideBar-background)}
+.toolbar,.panel{border-radius:12px;padding:14px 16px;margin-bottom:16px}
+.toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.actions,.status,.filters,.preset-row,.footerline{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.pill{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--vscode-panel-border);border-radius:999px;padding:5px 9px;font-size:12px;background:var(--vscode-editor-background)}
+.pill.ok{color:var(--vscode-testing-iconPassed)}
+.pill.warn{color:var(--vscode-editorWarning-foreground)}
+button,select,input{font:inherit}
+button{border:0;border-radius:7px;padding:7px 11px;color:var(--vscode-button-foreground);background:var(--vscode-button-background);cursor:pointer}
+button:hover{background:var(--vscode-button-hoverBackground)}
+button.secondary{color:var(--vscode-button-secondaryForeground);background:var(--vscode-button-secondaryBackground)}
+button.secondary:hover{background:var(--vscode-button-secondaryHoverBackground)}
+button:disabled{opacity:.5;cursor:not-allowed}
+.panel-title{font-size:14px;font-weight:650;margin-bottom:4px}
+.preset-panel{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(280px,.8fr);gap:18px}
+.preset-row{margin-top:10px}
+.preset-btn{position:relative;border:1px solid var(--vscode-panel-border);background:var(--vscode-button-secondaryBackground);color:var(--vscode-button-secondaryForeground);padding:8px 14px}
+.preset-btn.active{background:var(--vscode-button-background);color:var(--vscode-button-foreground);border-color:var(--vscode-focusBorder)}
+.preset-btn.active:after{content:"✓";margin-left:7px;font-weight:700}
+.custom-label{display:none;border:1px solid var(--vscode-panel-border);border-radius:999px;padding:5px 9px;color:var(--vscode-descriptionForeground)}
+.custom-label.show{display:inline-flex}
+.section-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;margin:22px 0 10px}
+.section-head h2{font-size:16px;margin:0;font-weight:650}
+.section-caption{font-size:12px;color:var(--vscode-descriptionForeground);margin-top:3px}
+.primary-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.eventgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.event{border-radius:12px;padding:15px;min-width:0}
+.event.primary{border-color:var(--vscode-focusBorder);background:color-mix(in srgb,var(--vscode-sideBar-background) 92%,var(--vscode-focusBorder) 8%)}
+.event.disabled-card{opacity:.68}
+.event.off:not(.primary){opacity:.82}
+.head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.event-title{font-size:14px;font-weight:650}
+.event.primary .event-title{font-size:16px}
+.meta{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px}
+.badge{font-size:11px;border:1px solid var(--vscode-panel-border);border-radius:999px;padding:2px 7px;color:var(--vscode-descriptionForeground)}
+.primary-badge{font-size:10px;border-radius:999px;padding:3px 7px;background:var(--vscode-button-background);color:var(--vscode-button-foreground);text-transform:uppercase;letter-spacing:.4px}
+.hint{font-size:12px;margin:7px 0 13px;line-height:1.45}
+.switch{display:inline-flex;align-items:center;gap:8px;white-space:nowrap;cursor:pointer;font-weight:600}
+.switch input{appearance:none;width:34px;height:19px;border-radius:999px;background:var(--vscode-input-background);border:1px solid var(--vscode-panel-border);position:relative;margin:0;cursor:pointer;transition:.15s}
+.switch input:after{content:"";position:absolute;width:13px;height:13px;border-radius:50%;top:2px;left:2px;background:var(--vscode-descriptionForeground);transition:.15s}
+.switch input:checked{background:var(--vscode-button-background);border-color:var(--vscode-button-background)}
+.switch input:checked:after{left:17px;background:var(--vscode-button-foreground)}
+.switch input:disabled{cursor:not-allowed}
+.controlgrid{display:grid;grid-template-columns:minmax(150px,1.4fr) minmax(160px,1fr) 92px;gap:12px;align-items:end}
+.field label{display:block;font-size:12px;margin-bottom:5px;color:var(--vscode-descriptionForeground)}
+.field select,.field input[type=range]{width:100%}
+select,input[type=text],input[type=number]{color:var(--vscode-input-foreground);background:var(--vscode-input-background);border:1px solid var(--vscode-input-border,var(--vscode-panel-border));border-radius:7px;padding:7px 9px}
+.volline{display:flex;gap:8px;align-items:center}
+.volline input{flex:1;min-width:80px}
+.value{min-width:44px;text-align:right;font-variant-numeric:tabular-nums}
+.boost{color:var(--vscode-editorWarning-foreground);font-size:10px;font-weight:650;margin-left:3px}
+.eventactions{display:flex;gap:8px;margin-top:11px}
+.preview{min-width:82px}
+.library-list{display:flex;gap:7px;flex-wrap:wrap;margin-top:9px}
+.soundchip{border:1px solid var(--vscode-panel-border);border-radius:999px;padding:4px 8px;font-size:12px}
+.utility-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.search{min-width:240px}
+.filewatch{width:100%}
+.toast{min-height:20px;margin:10px 0 0;font-size:12px;color:var(--vscode-descriptionForeground)}
+.safety{color:var(--vscode-editorWarning-foreground);font-size:12px;margin-top:8px}
+details.more{margin-top:2px}
+details.more>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:7px;font-weight:650;font-size:14px;padding:7px 0}
+details.more>summary::-webkit-details-marker{display:none}
+details.more>summary:before{content:"›";font-size:18px;transform:rotate(0deg);transition:.15s}
+details.more[open]>summary:before{transform:rotate(90deg)}
+@media(max-width:850px){body{padding:16px}.hero{flex-direction:column}.preset-panel,.utility-grid,.primary-grid,.eventgrid{grid-template-columns:1fr}.controlgrid{grid-template-columns:1fr}.search{min-width:0;width:100%}}
+</style></head>
+<body><div class="wrap">
+<div class="hero"><div class="brand"><img class="brand-icon" src="${iconUri}" alt=""><div><h1>Claude Code Sound Alerts</h1><div class="sub">Hear when Claude needs you and when the work is done.</div></div></div></div>
+
+<div class="toolbar"><div class="status"><span id="hookStatus" class="pill"></span><span id="listenerStatus" class="pill"></span></div><div class="actions"><button id="installHooks">Install / Update Hooks</button><button id="removeHooks" class="secondary">Remove Hooks</button><button id="openLog" class="secondary">Open Log</button></div></div>
+
+<div class="panel preset-panel">
+  <div>
+    <div class="panel-title">Alert preset</div>
+    <div class="hint">Choose how much Claude activity should make a sound. Sound, volume, and repeat choices are preserved.</div>
+    <div class="preset-row">
+      <button data-preset="minimal" class="preset-btn">Minimal</button>
+      <button data-preset="recommended" class="preset-btn">Recommended</button>
+      <button data-preset="everything" class="preset-btn">Everything</button>
+      <span id="customPreset" class="custom-label">Custom</span>
+    </div>
+  </div>
+  <div>
+    <div class="panel-title">Sound library</div>
+    <div class="hint">Use the built-in sounds or add your own PCM WAV once and reuse it anywhere.</div>
+    <div class="actions"><button id="addSound">Add WAV to My Sounds…</button></div>
+    <div id="customSounds" class="library-list"></div>
+  </div>
+</div>
+
+<div class="section-head"><div><h2>Primary alerts</h2><div class="section-caption">These are the only two alerts enabled by default.</div></div></div>
+<div id="primaryEvents" class="primary-grid"></div>
+
+<div class="section-head"><div><h2>Other Claude events</h2><div class="section-caption">Optional alerts for permissions, errors, tools, agents, tasks, sessions, and more.</div></div><div class="filters"><input id="search" class="search" type="text" placeholder="Search events…"><select id="category"><option value="">All categories</option></select></div></div>
+<div id="events" class="eventgrid"></div>
+
+<details class="more">
+  <summary>Advanced & global settings</summary>
+  <div class="panel utility-grid">
+    <div>
+      <div class="panel-title">FileChanged event</div>
+      <div class="hint">Claude requires literal filenames to watch. Separate names with commas, e.g. <code>.env, package.json</code>.</div>
+      <input id="watchedFiles" class="filewatch" type="text" placeholder=".env, package.json">
+    </div>
+    <div>
+      <div class="panel-title">Global controls</div>
+      <div class="footerline"><label><input id="enabled" type="checkbox"> Enable alerts</label><label><input id="visual" type="checkbox"> VS Code popups</label><label>Repeat gap <input id="gap" type="number" min="0" max="3000" step="50" style="width:82px"> ms</label></div>
+      <div class="note" style="margin-top:8px">Volume above 100% digitally boosts the WAV and can clip. Windows master volume still applies.</div>
+    </div>
+  </div>
+</details>
+<div id="toast" class="toast" aria-live="polite"></div>
+</div>
+<script nonce="${n}">
+(()=>{const vscode=acquireVsCodeApi();let state=${stateJson};const $=id=>document.getElementById(id);
+function post(action,extra={}){vscode.postMessage({action,...extra})}
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function soundOptions(selected){return(state.sounds||[]).map(s=>'<option value="'+esc(s.id)+'" '+(s.id===selected?'selected':'')+'>'+esc(s.label)+(s.builtIn?'':' (My Sound)')+'</option>').join('')}
+function renderLibrary(){const custom=(state.sounds||[]).filter(s=>!s.builtIn);$('customSounds').innerHTML=custom.length?custom.map(s=>'<span class="soundchip">'+esc(s.label)+' <button class="secondary removeSound" data-id="'+esc(s.id)+'" title="Remove" style="padding:1px 5px">×</button></span>').join(''):'<span class="note">No personal sounds added yet.</span>';document.querySelectorAll('.removeSound').forEach(b=>b.addEventListener('click',()=>post('removeSound',{id:b.dataset.id})))}
+function eventCard(e,primary){const s=e.setting||{};const locked=!!e.unavailable;const title=primary?(e.id==='askUserQuestion'?'Question':'Finished'):e.label;return '<section class="event '+(primary?'primary ':'')+(locked?'disabled-card ':'')+(!s.enabled?'off':'')+'" data-id="'+esc(e.id)+'" data-category="'+esc(e.category)+'" data-search="'+esc((e.label+' '+e.description+' '+e.hookEvent).toLowerCase())+'"><div class="head"><div><div class="event-title">'+esc(title)+'</div><div class="meta">'+(primary?'<span class="primary-badge">Primary</span>':'')+'<span class="badge">'+esc(e.hookEvent)+'</span><span class="badge">'+esc(e.category)+'</span></div></div><label class="switch"><input class="evtEnabled" type="checkbox" '+(s.enabled?'checked':'')+' '+(locked?'disabled':'')+'><span>'+(s.enabled?'On':'Off')+'</span></label></div><div class="hint">'+esc(e.description)+'</div>'+(locked?'<div class="safety">Not hooked: configuring WorktreeCreate would replace Claude Code’s normal worktree creation behavior.</div>':'<div class="controlgrid"><div class="field"><label>Sound</label><select class="evtSound">'+soundOptions(s.sound)+'</select></div><div class="field"><label>Volume <span class="boost">'+(s.volume>100?'BOOST':'')+'</span></label><div class="volline"><input class="evtVolume" type="range" min="0" max="200" value="'+s.volume+'"><span class="value">'+s.volume+'%</span></div></div><div class="field"><label>Repeat</label><select class="evtRepeat">'+[1,2,3,4,5].map(n=>'<option value="'+n+'" '+(n===s.repeat?'selected':'')+'>'+n+'×</option>').join('')+'</select></div></div><div class="eventactions"><button class="preview">Preview</button></div>')+'</section>'}
+function bindCards(){document.querySelectorAll('.event').forEach(card=>{const id=card.dataset.id;const en=card.querySelector('.evtEnabled'),sound=card.querySelector('.evtSound'),vol=card.querySelector('.evtVolume'),rep=card.querySelector('.evtRepeat'),preview=card.querySelector('.preview');if(en)en.addEventListener('change',e=>post('setEvent',{id,key:'enabled',value:e.target.checked}));if(sound)sound.addEventListener('change',e=>post('setEvent',{id,key:'sound',value:e.target.value}));if(vol){vol.addEventListener('input',e=>{card.querySelector('.value').textContent=e.target.value+'%';card.querySelector('.boost').textContent=Number(e.target.value)>100?'BOOST':''});vol.addEventListener('change',e=>post('setEvent',{id,key:'volume',value:Number(e.target.value)}))}if(rep)rep.addEventListener('change',e=>post('setEvent',{id,key:'repeat',value:Number(e.target.value)}));if(preview)preview.addEventListener('click',()=>post('preview',{id,volume:Number(vol.value),repeat:Number(rep.value),sound:sound.value}))})}
+function applyFilter(){const q=$('search').value.trim().toLowerCase(),cat=$('category').value;document.querySelectorAll('#events .event').forEach(c=>{c.style.display=(!q||c.dataset.search.includes(q))&&(!cat||c.dataset.category===cat)?'':'none'})}
+function renderPreset(){document.querySelectorAll('[data-preset]').forEach(b=>b.classList.toggle('active',b.dataset.preset===state.activePreset));$('customPreset').classList.toggle('show',state.activePreset==='custom')}
+function render(){const hs=state.hooks||{};$('hookStatus').textContent=hs.complete?'✓ Hooks installed ('+hs.installed+'/'+hs.total+')':'⚠ Hooks incomplete ('+hs.installed+'/'+hs.total+')';$('hookStatus').className='pill '+(hs.complete?'ok':'warn');$('listenerStatus').textContent=state.listenerActive?'● Listener active':'○ Listener inactive';$('listenerStatus').className='pill '+(state.listenerActive?'ok':'warn');$('enabled').checked=!!state.enabled;$('visual').checked=!!state.visualNotifications;$('gap').value=state.repeatGapMs;$('watchedFiles').value=(state.watchedFiles||[]).join(', ');const currentCat=$('category').value;$('category').innerHTML='<option value="">All categories</option>'+(state.categories||[]).map(c=>'<option value="'+esc(c)+'">'+esc(c)+'</option>').join('');if((state.categories||[]).includes(currentCat))$('category').value=currentCat;const primaryIds=new Set(['askUserQuestion','stop']);const primary=(state.events||[]).filter(e=>primaryIds.has(e.id)).sort((a,b)=>a.id==='askUserQuestion'?-1:1);const others=(state.events||[]).filter(e=>!primaryIds.has(e.id));$('primaryEvents').innerHTML=primary.map(e=>eventCard(e,true)).join('');$('events').innerHTML=others.map(e=>eventCard(e,false)).join('');renderLibrary();renderPreset();bindCards();applyFilter()}
+$('installHooks').addEventListener('click',()=>post('installHooks'));$('removeHooks').addEventListener('click',()=>post('removeHooks'));$('openLog').addEventListener('click',()=>post('openLog'));$('addSound').addEventListener('click',()=>post('addSound'));document.querySelectorAll('[data-preset]').forEach(b=>b.addEventListener('click',()=>{b.disabled=true;post('applyPreset',{name:b.dataset.preset});setTimeout(()=>{b.disabled=false},500)}));$('enabled').addEventListener('change',e=>post('setGlobal',{key:'enabled',value:e.target.checked}));$('visual').addEventListener('change',e=>post('setGlobal',{key:'showVisualNotifications',value:e.target.checked}));$('gap').addEventListener('change',e=>post('setGlobal',{key:'repeatGapMs',value:Number(e.target.value)}));$('watchedFiles').addEventListener('change',e=>post('setWatchedFiles',{value:e.target.value}));$('search').addEventListener('input',applyFilter);$('category').addEventListener('change',applyFilter);window.addEventListener('message',ev=>{const m=ev.data;if(m.type==='state'){state=m.state;render()}if(m.type==='toast'){$('toast').textContent=m.text||'';if(m.text)setTimeout(()=>{if($('toast').textContent===m.text)$('toast').textContent=''},3000)}});render()})();
+</script></body></html>`;
 }
 
 async function openControlPanel(){
@@ -615,6 +788,7 @@ async function activate(context){
   await migrateV12Settings();
   await migrateV131QuestionSound();
   await migrateV132DoneAndErrorSounds();
+  await migrateV140PrimaryDefaults();
   statusItem=vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right,100); statusItem.command='claudeSoundAlerts.openControlPanel'; statusItem.show(); context.subscriptions.push(statusItem); updateStatusBar();
   context.subscriptions.push(vscode.commands.registerCommand('claudeSoundAlerts.installHooks',()=>installHooks(true)));
   context.subscriptions.push(vscode.commands.registerCommand('claudeSoundAlerts.uninstallHooks',()=>uninstallHooks(true)));
@@ -633,7 +807,7 @@ async function activate(context){
     if(event.affectsConfiguration('claudeSoundAlerts.enabled')||event.affectsConfiguration('claudeSoundAlerts.serverPort'))startServer();
     if(event.affectsConfiguration('claudeSoundAlerts')){void sendUiState();updateStatusBar();}
   }));
-  startServer(); log('Extension v1.3.2 activated. Open the Claude Alerts control panel from the status bar.');
+  startServer(); log('Extension v1.4.0 activated. Open the Claude Alerts control panel from the status bar.');
 }
 function deactivate(){stopServer();}
 module.exports={activate,deactivate};
