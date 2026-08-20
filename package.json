@@ -1,8 +1,8 @@
 {
   "name": "claude-code-sound-alerts",
   "displayName": "Claude Code Sound Alerts",
-  "description": "Customizable Claude Code sound alerts with dynamic multi-window listeners, Question/Finished primary alerts, presets, volume boost, repeats, and per-event controls.",
-  "version": "1.5.1",
+  "description": "Reliable, secure, customizable Claude Code sound alerts with multi-window routing, per-event sounds, volume boost, repeats, and presets.",
+  "version": "1.6.0",
   "publisher": "local",
   "license": "MIT",
   "engines": {
@@ -19,14 +19,6 @@
     "alerts"
   ],
   "activationEvents": [
-    "onCommand:claudeSoundAlerts.configureSounds",
-    "onCommand:claudeSoundAlerts.installHooks",
-    "onCommand:claudeSoundAlerts.openControlPanel",
-    "onCommand:claudeSoundAlerts.setFinishedVolume",
-    "onCommand:claudeSoundAlerts.setQuestionVolume",
-    "onCommand:claudeSoundAlerts.testFinishedSound",
-    "onCommand:claudeSoundAlerts.testQuestionSound",
-    "onCommand:claudeSoundAlerts.uninstallHooks",
     "onStartupFinished"
   ],
   "main": "./extension.js",
@@ -87,184 +79,44 @@
         "claudeSoundAlerts.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Enable the local listener and sound alerts."
+          "description": "Enable the local listener and sound alerts.",
+          "scope": "application"
         },
         "claudeSoundAlerts.serverPort": {
           "type": "number",
           "default": 47391,
           "minimum": 1024,
           "maximum": 65535,
-          "description": "Starting localhost port for dynamic listeners. Each VS Code window automatically uses the first free port from this value upward."
+          "description": "Starting localhost port for dynamic listeners. Each VS Code window automatically uses the first free port from this value upward.",
+          "scope": "machine"
         },
         "claudeSoundAlerts.listenerPortCount": {
           "type": "number",
           "default": 20,
           "minimum": 1,
           "maximum": 100,
-          "description": "Number of localhost ports available for simultaneous VS Code listener instances. Each window automatically picks a free port."
-        },
-        "claudeSoundAlerts.questionSoundEnabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Play the question sound when Claude needs your input.",
-          "deprecationMessage": "Use the v1.3 Claude Sound Alerts control panel. This setting is retained for v1.2 migration."
-        },
-        "claudeSoundAlerts.finishedSoundEnabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Play the finished sound when Claude completes a response.",
-          "deprecationMessage": "Use the v1.3 Claude Sound Alerts control panel. This setting is retained for v1.2 migration."
-        },
-        "claudeSoundAlerts.alertOnAskUserQuestion": {
-          "type": "boolean",
-          "default": true,
-          "description": "Alert immediately when Claude uses AskUserQuestion.",
-          "deprecationMessage": "Use the v1.3 Claude Sound Alerts control panel. This setting is retained for v1.2 migration."
-        },
-        "claudeSoundAlerts.alertOnPermissionRequest": {
-          "type": "boolean",
-          "default": true,
-          "description": "Alert immediately when Claude asks for tool permission.",
-          "deprecationMessage": "Use the v1.3 Claude Sound Alerts control panel. This setting is retained for v1.2 migration."
-        },
-        "claudeSoundAlerts.alertOnPlanApproval": {
-          "type": "boolean",
-          "default": true,
-          "description": "Alert when Claude asks you to approve exiting plan mode.",
-          "deprecationMessage": "Use the v1.3 Claude Sound Alerts control panel. This setting is retained for v1.2 migration."
-        },
-        "claudeSoundAlerts.alertOnMcpElicitation": {
-          "type": "boolean",
-          "default": true,
-          "description": "Alert when an MCP server asks for user input.",
-          "deprecationMessage": "Use the v1.3 Claude Sound Alerts control panel. This setting is retained for v1.2 migration."
-        },
-        "claudeSoundAlerts.alertOnBackgroundInput": {
-          "type": "boolean",
-          "default": true,
-          "description": "Alert when a background Claude agent reports that it needs input.",
-          "deprecationMessage": "Use the v1.3 Claude Sound Alerts control panel. This setting is retained for v1.2 migration."
-        },
-        "claudeSoundAlerts.questionSoundPath": {
-          "type": "string",
-          "default": "",
-          "description": "Path to a custom PCM WAV file used when Question Sound is set to Custom.",
-          "deprecationMessage": "Use the v1.3 Claude Sound Alerts control panel. This setting is retained for v1.2 migration."
-        },
-        "claudeSoundAlerts.finishedSoundPath": {
-          "type": "string",
-          "default": "",
-          "description": "Path to a custom PCM WAV file used when Finished Sound is set to Custom.",
-          "deprecationMessage": "Use the v1.3 Claude Sound Alerts control panel. This setting is retained for v1.2 migration."
+          "description": "Number of localhost ports available for simultaneous VS Code listener instances. Each window automatically picks a free port.",
+          "scope": "machine"
         },
         "claudeSoundAlerts.debounceMs": {
           "type": "number",
           "default": 650,
           "minimum": 0,
           "maximum": 10000,
-          "description": "Suppress duplicate alerts of the same type inside this time window."
+          "description": "Suppress duplicate alerts of the same type inside this time window.",
+          "scope": "application"
         },
         "claudeSoundAlerts.showVisualNotifications": {
           "type": "boolean",
           "default": false,
-          "description": "Also show a VS Code information notification when an alert fires."
-        },
-        "claudeSoundAlerts.questionVolume": {
-          "type": "number",
-          "default": 70,
-          "minimum": 0,
-          "maximum": 200,
-          "description": "Question/attention sound volume from 0 to 200 percent.",
-          "deprecationMessage": "Use the v1.3 Claude Sound Alerts control panel. This setting is retained for v1.2 migration."
-        },
-        "claudeSoundAlerts.finishedVolume": {
-          "type": "number",
-          "default": 50,
-          "minimum": 0,
-          "maximum": 200,
-          "description": "Finished sound volume from 0 to 200 percent.",
-          "deprecationMessage": "Use the v1.3 Claude Sound Alerts control panel. This setting is retained for v1.2 migration."
-        },
-        "claudeSoundAlerts.questionSound": {
-          "type": "string",
-          "default": "question-chime",
-          "enum": [
-            "question-chime",
-            "done-fanfare",
-            "error-impact",
-            "soft-bell",
-            "bright-ping",
-            "double-ping",
-            "gentle-chime",
-            "digital-pop",
-            "warm-knock",
-            "success-chime",
-            "calm-complete",
-            "soft-pop",
-            "alert-pulse",
-            "custom"
-          ],
-          "enumDescriptions": [
-            "Question Chime",
-            "Done Fanfare",
-            "Error Impact",
-            "Soft Bell",
-            "Bright Ping",
-            "Double Ping",
-            "Gentle Chime",
-            "Digital Pop",
-            "Warm Knock",
-            "Success Chime",
-            "Calm Complete",
-            "Soft Pop",
-            "Alert Pulse",
-            "Custom WAV file"
-          ],
-          "description": "Sound used for question/attention alerts. The control panel is the easiest way to change this.",
-          "deprecationMessage": "Use the v1.3 Claude Sound Alerts control panel. This setting is retained for v1.2 migration."
-        },
-        "claudeSoundAlerts.finishedSound": {
-          "type": "string",
-          "default": "done-fanfare",
-          "enum": [
-            "question-chime",
-            "done-fanfare",
-            "error-impact",
-            "soft-bell",
-            "bright-ping",
-            "double-ping",
-            "gentle-chime",
-            "digital-pop",
-            "warm-knock",
-            "success-chime",
-            "calm-complete",
-            "soft-pop",
-            "alert-pulse",
-            "custom"
-          ],
-          "enumDescriptions": [
-            "Question Chime",
-            "Done Fanfare",
-            "Error Impact",
-            "Soft Bell",
-            "Bright Ping",
-            "Double Ping",
-            "Gentle Chime",
-            "Digital Pop",
-            "Warm Knock",
-            "Success Chime",
-            "Calm Complete",
-            "Soft Pop",
-            "Alert Pulse",
-            "Custom WAV file"
-          ],
-          "description": "Sound used for finished alerts. The control panel is the easiest way to change this.",
-          "deprecationMessage": "Use the v1.3 Claude Sound Alerts control panel. This setting is retained for v1.2 migration."
+          "description": "Also show a VS Code information notification when an alert fires.",
+          "scope": "application"
         },
         "claudeSoundAlerts.eventSettings": {
           "type": "object",
           "default": {},
-          "description": "Per-event alert settings managed by the Claude Sound Alerts control panel."
+          "description": "Per-event alert settings managed by the Claude Sound Alerts control panel.",
+          "scope": "application"
         },
         "claudeSoundAlerts.watchedFiles": {
           "type": "array",
@@ -272,17 +124,37 @@
             "type": "string"
           },
           "default": [],
-          "description": "Literal filenames to watch for Claude Code FileChanged alerts, for example .env or package.json. Reinstall hooks after changing this list."
+          "description": "Literal filenames to watch for Claude Code FileChanged alerts, for example .env or package.json. Installed hooks are updated automatically when this changes.",
+          "scope": "application"
         },
         "claudeSoundAlerts.repeatGapMs": {
           "type": "number",
           "default": 150,
           "minimum": 0,
           "maximum": 3000,
-          "description": "Pause in milliseconds between repeated alert sounds."
+          "description": "Pause in milliseconds between repeated alert sounds.",
+          "scope": "application"
         }
       }
     }
   },
-  "icon": "media/icon.png"
+  "icon": "media/icon.png",
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true
+    },
+    "virtualWorkspaces": {
+      "supported": "limited",
+      "description": "Alerts work, but workspace-affinity routing is limited when folders are not local file-system paths."
+    }
+  },
+  "scripts": {
+    "check": "node --check extension.js",
+    "lint": "eslint extension.js",
+    "test": "node test/smoke.js"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.90.0",
+    "eslint": "^9.35.0"
+  }
 }

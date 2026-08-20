@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.6.0
+
+- Hardened activation: commands/status register before migrations and each migration fails independently without aborting activation.
+- Removed folder-scoped event-setting writes; event settings are application-scoped and listener ports are machine-scoped.
+- Installed Claude hooks now reflect only enabled alerts instead of registering every lifecycle event.
+- Added automatic, debounced managed-hook reconciliation when enabled-event shape, watched filenames, listener range, or global enablement changes.
+- Hook status now detects stale ports/tokens, stale handler shapes, wrong matchers, duplicate/extra managed hooks, and Claude-settings read failures.
+- Fixed router takeover races by binding a replacement listener before dropping the current listener and guarding takeover attempts.
+- Disabled HTTP keep-alive for internal requests and force-closes idle/open listener connections during teardown.
+- Deactivation now awaits server cleanup and synchronously removes the listener registry entry.
+- Secured localhost endpoints with a per-install token, Host-header validation, request-size limits, and a workspace-path-free health response.
+- Moved listener registry and relay scripts from `~/.claude/` to VS Code extension global storage.
+- Added a settings lock and fresh re-read around `~/.claude/settings.json` mutations.
+- Added JSONC comment/trailing-comma parsing and in-place top-level `hooks` patching so unrelated formatting/comments/order are preserved.
+- Switched `SessionStart` / `Setup` relays to command exec-form (`command` + `args`) with `async: true` and a 10-second timeout.
+- Replaced Windows `System.Media.SoundPlayer` with native WinMM `PlaySound` invoked through PowerShell.
+- Added PCM `WAVE_FORMAT_EXTENSIBLE` support and explicit sound-file existence checks.
+- Serialized audio playback with a bounded queue to prevent overlapping alert processes.
+- Added automatic pruning of generated volume-cache WAVs.
+- Sanitized/truncated arbitrary hook payload values before logs/toasts.
+- URL routing now parses pathnames correctly even when a query string is present.
+- Reduced idle registry/monitor filesystem activity.
+- Fixed the control-panel state model so event changes update targeted cards instead of rebuilding the entire grid.
+- Restricted webview local resources to `media/`, removed `retainContextWhenHidden`, and preserved view state with webview state APIs.
+- Improved control accessibility by associating labels with selects/ranges and removing redundant checkbox ARIA state.
+- Removed obsolete contributed v1.2 settings while keeping private migration compatibility.
+- Reduced the supplied extension icon to 256×256 for Retina use and a smaller VSIX.
+- Added smoke tests, ESLint configuration, VS Code type development dependency, package scripts, richer `.vscodeignore`, and workspace/virtual-workspace capability declarations.
+- Fresh installs no longer write a 32-event default object into user settings merely to establish Question + Finished defaults.
+
 ## 1.5.1
 
 - Fixed event switches whose **On / Off** text could remain stale after toggling.

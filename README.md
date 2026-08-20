@@ -1,36 +1,66 @@
-# Claude Code Sound Alerts v1.5.1
+# Claude Code Sound Alerts v1.6.0
 
-A VS Code extension that plays configurable WAV alerts for Claude Code lifecycle events.
+A VS Code extension that plays configurable sound alerts for Claude Code lifecycle events.
 
-## v1.5.1 highlights
+Version 1.6 is a stability, security, and performance release. It keeps the v1.5 multi-window design while hardening activation, hook installation, routing, audio playback, settings writes, and the control-panel state model.
 
-- Redesigned the control panel with **Question** and **Finished** as prominent Primary Alerts at the top.
-- Only **Question** and **Finished** are enabled by default; every other event starts off.
-- Fixed **Minimal / Recommended / Everything** presets and added visible active-preset state.
-- **Minimal** = Question + Finished only.
-- **Recommended** = Question + Finished plus important permission, error, subagent, task, and MCP alerts.
-- **Everything** = every safe hook event enabled.
-- Added a **Custom** state when you manually change event enablement outside a preset.
-- Added the selected artwork as the official VS Code extension icon.
-- Added the user-provided **Done Fanfare** and made it the default for **Claude Finished**.
-- Added the user-provided **Error Impact** and made it the default for **Tool Failed**, **Permission Denied**, and **Claude API / Turn Error**.
-- Retained **Question Chime** as the default for **Ask User Question**.
-- Full event control panel covering the current Claude Code hook lifecycle.
-- Separate **sound**, **volume (0–200%)**, and **repeat count (1–5)** for each event.
-- **My Sounds** library: import a PCM WAV once and use it from every event dropdown.
-- Built-in Minimal, Recommended, and Everything enablement presets.
-- Built-in sounds: Question Chime, Done Fanfare, Error Impact, Soft Bell, Bright Ping, Double Ping, Gentle Chime, Digital Pop, Warm Knock, Success Chime, Calm Complete, Soft Pop, and Alert Pulse.
-- Windows playback uses `System.Media.SoundPlayer` with PCM WAV preprocessing for independent volume and digital boost.
-- Global mute, optional VS Code popups, repeat-gap control, hook status, and listener status.
-- True multi-listener mode: every VS Code window gets its own localhost listener.
-- If the preferred port is busy, the next free port is selected automatically.
-- Hook events are routed to one appropriate listener, preferring the VS Code workspace that contains Claude's current working directory.
-- The configured hook/router port automatically fails over to another open VS Code window if its owner closes.
-- Updated extension artwork to the newly supplied notification icon.
+## Defaults
 
-## Events
+On a fresh install only two alerts are enabled:
 
-The UI includes:
+- **Ask User Question** — Question Chime
+- **Claude Finished** — Done Fanfare
+
+Every other alert starts **Off**. Use the **Minimal**, **Recommended**, or **Everything** presets, or enable individual events in the control panel.
+
+## What v1.6 fixes
+
+- Commands and the status bar are registered before migrations, so a migration/settings failure cannot make the extension disappear.
+- Event settings are application-scoped; listener ports are machine-scoped.
+- Claude hooks are installed **only for enabled alerts**. Enabling/disabling an alert automatically reconciles the managed hooks.
+- Hook status detects stale URLs, stale tokens, wrong matchers/handler shapes, duplicate/extra managed hooks, and unreadable Claude settings.
+- Multi-window listener failover no longer tears down a healthy listener before a replacement port is bound.
+- Listener shutdown closes keep-alive connections and removes its registry entry synchronously during deactivation.
+- Local HTTP endpoints now use a per-install secret token, validate the `Host` header, cap request bodies, and do not expose workspace paths from the health endpoint.
+- `~/.claude/settings.json` updates use a lockfile, re-read inside the lock, accept JSONC comments/trailing commas, and patch only the top-level `hooks` property so unrelated comments/order/formatting are preserved.
+- Windows audio uses the native WinMM `PlaySound` API instead of `System.Media.SoundPlayer`.
+- PCM WAV validation accepts standard PCM and PCM `WAVE_FORMAT_EXTENSIBLE` files at 8/16/24/32-bit depth.
+- Playback is serialized and capped to avoid overlapping PowerShell/audio processes under noisy presets.
+- Missing sound files now produce actionable errors.
+- Generated volume-cache WAVs are pruned automatically.
+- The webview updates individual event cards instead of rebuilding the whole panel after every toggle.
+- Listener heartbeats/router checks are less aggressive when idle.
+- Relay scripts live in the extension's VS Code global storage and use Claude Code command-hook exec form with `args`; command relays are asynchronous with a 10-second timeout.
+- The extension icon is the user-selected artwork, resized to 256×256 for a lightweight Retina-ready marketplace asset.
+
+## Control panel
+
+Click **Claude Alerts** in the VS Code status bar or run:
+
+`Claude Sound Alerts: Open Control Panel`
+
+Each event has independent:
+
+- On / Off
+- Sound
+- Volume from **0–200%**
+- Repeat count from **1–5×**
+- Preview
+
+The two primary alerts — **Question** and **Finished** — stay at the top of the panel.
+
+### Presets
+
+- **Minimal** — Question + Finished only
+- **Recommended** — Question + Finished plus important permission, failure, subagent, task, and MCP-input alerts
+- **Everything** — every safe observable event
+- **Custom** — shown when manual event choices do not match one of the presets
+
+Applying a preset changes only event enablement. Existing sound, volume, and repeat selections are preserved.
+
+## Supported Claude events
+
+The UI represents the current Claude Code hook lifecycle, including:
 
 - Ask User Question and Plan Approval (special `PreToolUse` cases)
 - SessionStart
@@ -46,78 +76,121 @@ The UI includes:
 - PostToolBatch
 - PermissionDenied
 - Notification
-- SubagentStart
-- SubagentStop
-- TaskCreated
-- TaskCompleted
-- Stop
-- StopFailure
+- SubagentStart / SubagentStop
+- TaskCreated / TaskCompleted
+- Stop / StopFailure
 - TeammateIdle
 - ConfigChange
-- CwdChanged
-- DirectoryAdded
+- CwdChanged / DirectoryAdded
 - FileChanged
-- WorktreeCreate (shown but safety-protected; see below)
+- WorktreeCreate (displayed but safety-protected)
 - WorktreeRemove
-- PreCompact
-- PostCompact
+- PreCompact / PostCompact
 - SessionEnd
-- Elicitation
-- ElicitationResult
+- Elicitation / ElicitationResult
 
 ### WorktreeCreate safety protection
 
-Claude Code treats a configured `WorktreeCreate` hook as a replacement for its normal worktree creation behavior, and that hook must create and return a valid worktree path. Sound Alerts therefore shows this event in the UI but deliberately does not install a listener for it, to avoid breaking Claude worktrees.
+Claude Code treats a configured `WorktreeCreate` hook as a replacement for its normal worktree creation behavior and requires that hook to create and return a valid worktree path. Sound Alerts therefore displays the event but deliberately does not install a sound-only `WorktreeCreate` hook.
 
 ### FileChanged
 
-Claude Code requires literal filenames to watch. Enter them in the control panel, for example:
+Claude Code expects literal filenames for `FileChanged` matchers. Enter names such as:
 
 `.env, package.json, pyproject.toml`
 
-The extension automatically updates its installed hooks when this list changes.
+The managed hook configuration updates automatically when this list changes while FileChanged is enabled.
 
-## Install
+## Install / upgrade
 
-1. In VS Code, open **Extensions**.
+1. Open **Extensions** in VS Code.
 2. Open the `...` menu and choose **Install from VSIX...**.
 3. Select the `.vsix` file.
-4. Reload VS Code if requested.
-5. Click **Claude Alerts** in the status bar.
-6. Click **Install / Update Hooks**.
+4. Reload all open VS Code windows if prompted.
+5. Open **Claude Alerts** from the status bar.
+6. If this is the first install, click **Install / Update Hooks**.
 
-The extension preserves unrelated settings and hook handlers in `~/.claude/settings.json`.
+When upgrading from v1.5.x, v1.6 detects existing Sound Alerts hooks and automatically reconciles stale managed hooks after activation. If Claude settings are read-only or automatic repair fails, the control panel reports the error and you can use **Install / Update Hooks** manually.
+
+The extension preserves unrelated Claude hook handlers.
+
+## Multi-window listener routing
+
+Every VS Code window owns its own localhost listener. The default port range starts at `47391`; later windows select the next free port automatically.
+
+Claude hooks point to one active router endpoint. The router forwards an incoming event to one healthy listener, preferring a VS Code workspace that contains Claude's current `cwd`, so the same alert is not played by every open window.
+
+If the router-owning window closes, another window can take over the configured router port. Takeover is guarded and binds the replacement listener before the previous listener is dropped.
+
+The listener registry and command-relay scripts are stored in the extension's VS Code global storage rather than `~/.claude/`.
+
+## Local listener security
+
+The HTTP listener binds only to `127.0.0.1`. In addition, v1.6:
+
+- generates a random per-install token and embeds it in hook/health paths;
+- validates `Host` as `127.0.0.1:<port>` or `localhost:<port>`;
+- rejects unknown paths;
+- limits hook request bodies;
+- keeps workspace paths out of the health response.
+
+Claude event data is not intentionally transmitted to an external service.
 
 ## Sound library
 
-Click **Add WAV to My Sounds...** in the control panel. The file is validated as uncompressed PCM WAV, copied into the extension's persistent global storage, and appears in every event's sound dropdown.
+The extension ships with:
 
-Custom sounds support PCM WAV at 8, 16, 24, or 32-bit depth. If you have MP3/M4A/OGG audio, convert it to PCM WAV first.
+- Question Chime
+- Done Fanfare
+- Error Impact
+- Soft Bell
+- Bright Ping
+- Double Ping
+- Gentle Chime
+- Digital Pop
+- Warm Knock
+- Success Chime
+- Calm Complete
+- Soft Pop
+- Alert Pulse
 
-## Volume and boost
+Click **Add WAV to My Sounds...** to import your own WAV once and reuse it from every event dropdown.
 
-- 0% = silent
-- 1–100% = attenuation up to the WAV's original level
-- 101–200% = digital boost
+Accepted custom audio is uncompressed PCM WAV, including PCM `WAVE_FORMAT_EXTENSIBLE`, at 8, 16, 24, or 32-bit depth. MP3/M4A/OGG files should be converted to PCM WAV before importing.
 
-Boosting cannot bypass your operating system's master output volume and may clip/distort very loud source audio.
+## Volume and repeat
 
-## Repeat
+- `0%` = silent
+- `1–100%` = attenuation up to the source WAV level
+- `101–200%` = digital boost
+- Repeat = `1–5×`
 
-Every event can play its sound 1–5 times. The global **Repeat gap** controls the pause between repetitions.
+Boost cannot bypass the operating system master volume and may clip/distort if the source is already loud.
 
-## Listener status and multiple VS Code windows
+## Audio requirements
 
-Version 1.5 uses a real multi-listener design. Every VS Code window gets its own localhost listener. The configured `serverPort` is the starting port (47391 by default), and additional windows automatically use the next free port within `listenerPortCount` (20 by default).
+- **Windows:** Windows PowerShell 5.1 or PowerShell 7 (`pwsh`) is used only to invoke the native WinMM `PlaySound` API. The previous `System.Media.SoundPlayer` dependency is no longer used.
+- **macOS:** uses the built-in `afplay` command.
+- **Linux:** requires one of `paplay`, `ffplay`, or `aplay` to be available on `PATH`.
 
-Claude hooks point to one router listener. That router immediately forwards each event to one active listener, preferring the listener whose VS Code workspace contains Claude's `cwd`. This avoids duplicate sounds across windows while still allowing every window to own a separate listener.
+## Claude settings / JSONC
 
-If the router-owning VS Code window closes, another open window detects that the configured router port is free and automatically takes it over. If the starting port was already occupied when hooks are installed, the extension can use a later free port instead.
+Hook installation updates `~/.claude/settings.json` under a short-lived lock. JSON and common JSONC syntax (comments and trailing commas) are accepted. The extension patches only the top-level `hooks` value, preserving unrelated comments, key ordering, and formatting. Formatting/comments *inside the managed hooks value itself* may be normalized when hooks are changed.
 
-The control panel shows the actual listener port for the current window. When that listener is also the configured hook router it is marked **router**.
+## Workspace Trust and virtual workspaces
 
-After upgrading from v1.4.x, click **Install / Update Hooks** once so Claude's hook URLs point to the active v1.5 router.
+The extension does not execute workspace code and its routing/security settings cannot be overridden from repository workspace settings, so it remains available in Restricted Mode. Virtual workspaces are supported in a limited mode because workspace-affinity routing can only score local file-system folders.
 
-## Privacy
+## Development
 
-Claude hooks send event JSON only to `127.0.0.1` on the configured local port. The extension does not intentionally transmit Claude event data to an external service.
+The source package includes scripts for:
+
+- `npm run check` — JavaScript syntax check
+- `npm run lint` — ESLint
+- `npm test` — smoke tests for JSONC hook patching, enabled-only hook generation, bundled WAV validation, gain processing, and manifest invariants
+
+Development dependencies are declared for VS Code types and ESLint. The packaged VSIX excludes development/test files.
+
+## Publishing note
+
+This build is intended for private VSIX sideloading and still uses `publisher: "local"`. To publish it to the Visual Studio Marketplace, replace that value with your real Marketplace publisher ID and add your real repository/homepage/bugs URLs. Those values are intentionally not invented by this project.

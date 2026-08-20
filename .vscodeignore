@@ -1,2 +1,15 @@
 .vscode/**
+.git/**
+.gitignore
+.gitattributes
+node_modules/**
+**/*.map
+.eslintrc*
+eslint.config.*
+test/**
+scripts/**
 *.vsix
+*.mp3
+*.zip
+media/icon-source.*
+REVIEW_FIXES.md
