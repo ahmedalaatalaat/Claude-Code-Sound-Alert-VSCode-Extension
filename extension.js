@@ -74,6 +74,8 @@ let server;
 let output;
 let extensionContext;
 let retryTimer;
+let listenerMode = 'inactive'; // inactive | owned | shared | disabled
+let listenerDetail = '';
 let controlPanel;
 let statusItem;
 const lastPlayedAt = new Map();
@@ -84,6 +86,62 @@ function clamp(n, min, max) { n = Number(n); return Number.isFinite(n) ? Math.ma
 function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 function getPort() { return clamp(cfg().get('serverPort', 47391), 1024, 65535); }
 function endpointFor(port = getPort()) { return `http://127.0.0.1:${port}/${EXTENSION_TAG}/hook`; }
+function healthPath() { return `/${EXTENSION_TAG}/health`; }
+function listenerIsActive() { return listenerMode === 'owned' || listenerMode === 'shared'; }
+
+function probeListener(port = getPort(), allowLegacy = true) {
+  return new Promise(resolve => {
+    let settled = false;
+    const finish = value => { if (!settled) { settled = true; resolve(value); } };
+    const req = http.request({ host:'127.0.0.1', port, path:healthPath(), method:'GET', timeout:900 }, res => {
+      let raw='';
+      res.setEncoding('utf8');
+      res.on('data', c => { raw += c; if (raw.length > 8192) req.destroy(); });
+      res.on('end', () => {
+        try {
+          const data = raw ? JSON.parse(raw) : {};
+          if (res.statusCode === 200 && data && data.ok === true && data.tag === EXTENSION_TAG) return finish({ active:true, legacy:false, pid:data.pid });
+        } catch(_) {}
+        if (!allowLegacy) return finish({ active:false });
+        probeLegacyListener(port).then(finish);
+      });
+    });
+    req.on('timeout', () => { req.destroy(); if (allowLegacy) probeLegacyListener(port).then(finish); else finish({active:false}); });
+    req.on('error', () => { if (allowLegacy) probeLegacyListener(port).then(finish); else finish({active:false}); });
+    req.end();
+  });
+}
+
+function probeLegacyListener(port = getPort()) {
+  return new Promise(resolve => {
+    const body = JSON.stringify({ hook_event_name:'__claude_sound_alerts_probe__', probe:true });
+    let settled = false;
+    const finish = value => { if (!settled) { settled = true; resolve(value); } };
+    const req = http.request({ host:'127.0.0.1', port, path:`/${EXTENSION_TAG}/hook`, method:'POST', timeout:900, headers:{'Content-Type':'application/json','Content-Length':Buffer.byteLength(body)} }, res => {
+      res.resume();
+      res.on('end', () => finish({ active:res.statusCode === 204, legacy:res.statusCode === 204 }));
+    });
+    req.on('timeout', () => { req.destroy(); finish({active:false}); });
+    req.on('error', () => finish({active:false}));
+    req.write(body); req.end();
+  });
+}
+
+function scheduleListenerMonitor(delay = 5000) {
+  if (retryTimer) clearTimeout(retryTimer);
+  retryTimer = setTimeout(async () => {
+    retryTimer = undefined;
+    if (!cfg().get('enabled', true)) return;
+    if (listenerMode === 'shared') {
+      const probe = await probeListener(getPort());
+      if (probe.active) { scheduleListenerMonitor(5000); return; }
+      log('Shared listener disappeared; attempting to take ownership.');
+      listenerMode = 'inactive'; listenerDetail = 'Shared listener disappeared; taking over.';
+      updateStatusBar(); void sendUiState();
+    }
+    startServer();
+  }, delay);
+}
 
 function defaultEventSetting(def) {
   return { enabled: !!def.defaultEnabled, sound: def.sound, volume: def.volume, repeat: def.repeat };
@@ -346,15 +404,23 @@ async function playProfile(id, reason, force=false, overrides={}) {
 
 function startServer() {
   stopServer();
-  if (!cfg().get('enabled',true)) { log('Listener disabled by settings.'); updateStatusBar(); return; }
+  if (!cfg().get('enabled',true)) {
+    listenerMode='disabled'; listenerDetail='Sound alerts are globally disabled.';
+    log('Listener disabled by settings.'); updateStatusBar(); void sendUiState(); return;
+  }
   const port=getPort();
   server=http.createServer((req,res)=>{
+    if (req.method==='GET' && req.url===healthPath()) {
+      const payload=JSON.stringify({ok:true,tag:EXTENSION_TAG,pid:process.pid,port});
+      res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store','Content-Length':Buffer.byteLength(payload)}); res.end(payload); return;
+    }
     if (req.method!=='POST' || req.url!==`/${EXTENSION_TAG}/hook`) { res.writeHead(404); res.end(); return; }
     let raw=''; req.setEncoding('utf8');
     req.on('data',chunk=>{ raw+=chunk; if(raw.length>1024*1024) req.destroy(); });
     req.on('end',()=>{
       try {
         const body=raw?JSON.parse(raw):{};
+        if (body?.probe === true && body?.hook_event_name === '__claude_sound_alerts_probe__') { res.writeHead(204); res.end(); return; }
         const result=classifyHook(body);
         if(result) void playProfile(result.id,result.reason);
         else log(`Ignored/disabled hook event: ${body.hook_event_name||'unknown'}${body.tool_name?` / ${body.tool_name}`:''}${body.notification_type?` / ${body.notification_type}`:''}`);
@@ -366,14 +432,34 @@ function startServer() {
   server.on('error',error=>{
     log(`Listener error on port ${port}: ${error.message||error}`);
     if(error?.code==='EADDRINUSE') {
-      log('Port is in use, likely by another VS Code window. Retrying periodically.');
-      try{server?.close();}catch(_){} server=undefined; retryTimer=setTimeout(startServer,5000); updateStatusBar(); return;
+      try{server?.close();}catch(_){} server=undefined;
+      void (async()=>{
+        const probe=await probeListener(port);
+        if(probe.active) {
+          listenerMode='shared';
+          listenerDetail=probe.legacy ? 'Shared listener is owned by another VS Code window (legacy-compatible).' : 'Shared listener is owned by another VS Code window.';
+          log(`Listener is active in another VS Code window${probe.legacy?' (legacy-compatible)':''}. Using shared listener on port ${port}.`);
+        } else {
+          listenerMode='inactive'; listenerDetail=`Port ${port} is occupied by another application.`;
+          log(`Port ${port} is occupied, but it is not a Claude Sound Alerts listener.`);
+        }
+        updateStatusBar(); void sendUiState(); scheduleListenerMonitor(5000);
+      })();
+      return;
     }
-    vscode.window.showErrorMessage(`Claude Sound Alerts could not listen on localhost:${port}.`); updateStatusBar();
+    listenerMode='inactive'; listenerDetail=error?.message||String(error);
+    vscode.window.showErrorMessage(`Claude Sound Alerts could not listen on localhost:${port}.`); updateStatusBar(); void sendUiState(); scheduleListenerMonitor(5000);
   });
-  server.listen(port,'127.0.0.1',()=>{ log(`Listening for Claude Code hooks at ${endpointFor(port)}`); updateStatusBar(); void sendUiState(); });
+  server.listen(port,'127.0.0.1',()=>{
+    listenerMode='owned'; listenerDetail='This VS Code window owns the listener.';
+    log(`Listening for Claude Code hooks at ${endpointFor(port)}`); updateStatusBar(); void sendUiState();
+  });
 }
-function stopServer(){ if(retryTimer){clearTimeout(retryTimer);retryTimer=undefined;} if(server){try{server.close();}catch(_){} server=undefined;} }
+function stopServer(){
+  if(retryTimer){clearTimeout(retryTimer);retryTimer=undefined;}
+  if(server){try{server.close();}catch(_){} server=undefined;}
+  if(listenerMode!=='disabled'){listenerMode='inactive'; listenerDetail='';}
+}
 
 function hookHandler(url){ return {type:'http',url,timeout:2}; }
 function claudeSettingsPath(){ return path.join(os.homedir(),'.claude','settings.json'); }
@@ -605,7 +691,7 @@ async function getUiState(){
   const hs=await hookInstallStatus();
   return {
     enabled:cfg().get('enabled',true), visualNotifications:cfg().get('showVisualNotifications',false), repeatGapMs:Math.round(clamp(cfg().get('repeatGapMs',150),0,3000)),
-    hooks:hs, listenerActive:Boolean(server?.listening), platform:process.platform,
+    hooks:hs, listenerActive:listenerIsActive(), listenerMode, listenerDetail, platform:process.platform,
     events:EVENT_DEFS.map(d=>({...d,setting:eventSetting(d.id)})), categories:CATEGORIES, sounds:allSoundOptions(), watchedFiles:cfg().get('watchedFiles',[])||[], activePreset:activePresetName()
   };
 }
@@ -751,7 +837,7 @@ function eventCard(e,primary){const s=e.setting||{};const locked=!!e.unavailable
 function bindCards(){document.querySelectorAll('.event').forEach(card=>{const id=card.dataset.id;const en=card.querySelector('.evtEnabled'),sound=card.querySelector('.evtSound'),vol=card.querySelector('.evtVolume'),rep=card.querySelector('.evtRepeat'),preview=card.querySelector('.preview');if(en)en.addEventListener('change',e=>post('setEvent',{id,key:'enabled',value:e.target.checked}));if(sound)sound.addEventListener('change',e=>post('setEvent',{id,key:'sound',value:e.target.value}));if(vol){vol.addEventListener('input',e=>{card.querySelector('.value').textContent=e.target.value+'%';card.querySelector('.boost').textContent=Number(e.target.value)>100?'BOOST':''});vol.addEventListener('change',e=>post('setEvent',{id,key:'volume',value:Number(e.target.value)}))}if(rep)rep.addEventListener('change',e=>post('setEvent',{id,key:'repeat',value:Number(e.target.value)}));if(preview)preview.addEventListener('click',()=>post('preview',{id,volume:Number(vol.value),repeat:Number(rep.value),sound:sound.value}))})}
 function applyFilter(){const q=$('search').value.trim().toLowerCase(),cat=$('category').value;document.querySelectorAll('#events .event').forEach(c=>{c.style.display=(!q||c.dataset.search.includes(q))&&(!cat||c.dataset.category===cat)?'':'none'})}
 function renderPreset(){document.querySelectorAll('[data-preset]').forEach(b=>b.classList.toggle('active',b.dataset.preset===state.activePreset));$('customPreset').classList.toggle('show',state.activePreset==='custom')}
-function render(){const hs=state.hooks||{};$('hookStatus').textContent=hs.complete?'✓ Hooks installed ('+hs.installed+'/'+hs.total+')':'⚠ Hooks incomplete ('+hs.installed+'/'+hs.total+')';$('hookStatus').className='pill '+(hs.complete?'ok':'warn');$('listenerStatus').textContent=state.listenerActive?'● Listener active':'○ Listener inactive';$('listenerStatus').className='pill '+(state.listenerActive?'ok':'warn');$('enabled').checked=!!state.enabled;$('visual').checked=!!state.visualNotifications;$('gap').value=state.repeatGapMs;$('watchedFiles').value=(state.watchedFiles||[]).join(', ');const currentCat=$('category').value;$('category').innerHTML='<option value="">All categories</option>'+(state.categories||[]).map(c=>'<option value="'+esc(c)+'">'+esc(c)+'</option>').join('');if((state.categories||[]).includes(currentCat))$('category').value=currentCat;const primaryIds=new Set(['askUserQuestion','stop']);const primary=(state.events||[]).filter(e=>primaryIds.has(e.id)).sort((a,b)=>a.id==='askUserQuestion'?-1:1);const others=(state.events||[]).filter(e=>!primaryIds.has(e.id));$('primaryEvents').innerHTML=primary.map(e=>eventCard(e,true)).join('');$('events').innerHTML=others.map(e=>eventCard(e,false)).join('');renderLibrary();renderPreset();bindCards();applyFilter()}
+function render(){const hs=state.hooks||{};$('hookStatus').textContent=hs.complete?'✓ Hooks installed ('+hs.installed+'/'+hs.total+')':'⚠ Hooks incomplete ('+hs.installed+'/'+hs.total+')';$('hookStatus').className='pill '+(hs.complete?'ok':'warn');const lm=state.listenerMode||'inactive';$('listenerStatus').textContent=lm==='owned'?'● Listener active — this window':lm==='shared'?'● Listener active — shared':lm==='disabled'?'○ Listener disabled':'○ Listener inactive';$('listenerStatus').className='pill '+(state.listenerActive?'ok':'warn');$('listenerStatus').title=state.listenerDetail||'';$('enabled').checked=!!state.enabled;$('visual').checked=!!state.visualNotifications;$('gap').value=state.repeatGapMs;$('watchedFiles').value=(state.watchedFiles||[]).join(', ');const currentCat=$('category').value;$('category').innerHTML='<option value="">All categories</option>'+(state.categories||[]).map(c=>'<option value="'+esc(c)+'">'+esc(c)+'</option>').join('');if((state.categories||[]).includes(currentCat))$('category').value=currentCat;const primaryIds=new Set(['askUserQuestion','stop']);const primary=(state.events||[]).filter(e=>primaryIds.has(e.id)).sort((a,b)=>a.id==='askUserQuestion'?-1:1);const others=(state.events||[]).filter(e=>!primaryIds.has(e.id));$('primaryEvents').innerHTML=primary.map(e=>eventCard(e,true)).join('');$('events').innerHTML=others.map(e=>eventCard(e,false)).join('');renderLibrary();renderPreset();bindCards();applyFilter()}
 $('installHooks').addEventListener('click',()=>post('installHooks'));$('removeHooks').addEventListener('click',()=>post('removeHooks'));$('openLog').addEventListener('click',()=>post('openLog'));$('addSound').addEventListener('click',()=>post('addSound'));document.querySelectorAll('[data-preset]').forEach(b=>b.addEventListener('click',()=>{b.disabled=true;post('applyPreset',{name:b.dataset.preset});setTimeout(()=>{b.disabled=false},500)}));$('enabled').addEventListener('change',e=>post('setGlobal',{key:'enabled',value:e.target.checked}));$('visual').addEventListener('change',e=>post('setGlobal',{key:'showVisualNotifications',value:e.target.checked}));$('gap').addEventListener('change',e=>post('setGlobal',{key:'repeatGapMs',value:Number(e.target.value)}));$('watchedFiles').addEventListener('change',e=>post('setWatchedFiles',{value:e.target.value}));$('search').addEventListener('input',applyFilter);$('category').addEventListener('change',applyFilter);window.addEventListener('message',ev=>{const m=ev.data;if(m.type==='state'){state=m.state;render()}if(m.type==='toast'){$('toast').textContent=m.text||'';if(m.text)setTimeout(()=>{if($('toast').textContent===m.text)$('toast').textContent=''},3000)}});render()})();
 </script></body></html>`;
 }
@@ -781,7 +867,7 @@ async function openControlPanel(){
     }catch(error){log(`Control panel error: ${error.stack||error}`);controlPanel?.webview.postMessage({type:'toast',text:`Error: ${error.message||error}`});}
   },null,extensionContext.subscriptions);
 }
-function updateStatusBar(){if(!statusItem)return;if(!cfg().get('enabled',true)){statusItem.text='$(mute) Claude Alerts';statusItem.tooltip='Claude Code Sound Alerts are disabled. Click to configure.';}else{statusItem.text='$(unmute) Claude Alerts';statusItem.tooltip='Configure Claude Code Sound Alerts';}}
+function updateStatusBar(){if(!statusItem)return;if(!cfg().get('enabled',true)){statusItem.text='$(mute) Claude Alerts';statusItem.tooltip='Claude Code Sound Alerts are disabled. Click to configure.';return;}statusItem.text='$(unmute) Claude Alerts';statusItem.tooltip=listenerMode==='owned'?'Claude Sound Alerts listener is active in this VS Code window. Click to configure.':listenerMode==='shared'?'Claude Sound Alerts listener is active and shared from another VS Code window. Click to configure.':listenerMode==='disabled'?'Claude Sound Alerts listener is disabled. Click to configure.':'Claude Sound Alerts listener is not currently active. Click to configure.';}
 
 async function activate(context){
   extensionContext=context; output=vscode.window.createOutputChannel('Claude Code Sound Alerts'); context.subscriptions.push(output);
@@ -807,7 +893,7 @@ async function activate(context){
     if(event.affectsConfiguration('claudeSoundAlerts.enabled')||event.affectsConfiguration('claudeSoundAlerts.serverPort'))startServer();
     if(event.affectsConfiguration('claudeSoundAlerts')){void sendUiState();updateStatusBar();}
   }));
-  startServer(); log('Extension v1.4.0 activated. Open the Claude Alerts control panel from the status bar.');
+  startServer(); log('Extension v1.4.1 activated. Multi-window listener sharing enabled. Open the Claude Alerts control panel from the status bar.');
 }
 function deactivate(){stopServer();}
 module.exports={activate,deactivate};

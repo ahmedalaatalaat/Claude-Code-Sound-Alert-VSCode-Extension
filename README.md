@@ -2,7 +2,7 @@
 
 A VS Code extension that plays configurable WAV alerts for Claude Code lifecycle events.
 
-## v1.4.0 highlights
+## v1.4.1 highlights
 
 - Redesigned the control panel with **Question** and **Finished** as prominent Primary Alerts at the top.
 - Only **Question** and **Finished** are enabled by default; every other event starts off.
@@ -22,6 +22,8 @@ A VS Code extension that plays configurable WAV alerts for Claude Code lifecycle
 - Built-in sounds: Question Chime, Done Fanfare, Error Impact, Soft Bell, Bright Ping, Double Ping, Gentle Chime, Digital Pop, Warm Knock, Success Chime, Calm Complete, Soft Pop, and Alert Pulse.
 - Windows playback uses `System.Media.SoundPlayer` with PCM WAV preprocessing for independent volume and digital boost.
 - Global mute, optional VS Code popups, repeat-gap control, hook status, and listener status.
+- Multi-window listener sharing: one VS Code window owns the localhost listener while other windows report **Listener active — shared**.
+- Automatic listener failover if the owner window closes.
 
 ## Events
 
@@ -100,6 +102,17 @@ Boosting cannot bypass your operating system's master output volume and may clip
 ## Repeat
 
 Every event can play its sound 1–5 times. The global **Repeat gap** controls the pause between repetitions.
+
+## Listener status and multiple VS Code windows
+
+The extension uses one localhost listener on `127.0.0.1` for Claude Code hook events. Only one process can own that port at a time. v1.4.1 handles this automatically:
+
+- **Listener active — this window** means the current VS Code window owns the listener.
+- **Listener active — shared** means another VS Code window owns it and this window has verified that the shared listener is healthy.
+- If the owner window closes, another open window automatically attempts to take ownership.
+- **Listener inactive** now means the listener really is unavailable, or the configured port is occupied by an unrelated application.
+
+This avoids duplicate listeners and duplicate sounds while still supporting several VS Code/Claude sessions at once.
 
 ## Privacy
 

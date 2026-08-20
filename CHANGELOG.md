@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.4.1
+
+- Fixed multi-window listener status and ownership.
+- Added a localhost health endpoint so VS Code windows can verify an existing Claude Sound Alerts listener.
+- A second VS Code window now shows **Listener active — shared** instead of incorrectly showing **Listener inactive** when another window owns port 47391.
+- Added automatic listener failover: if the owning VS Code window closes, another open window automatically attempts to take ownership.
+- Added compatibility probing for an already-running v1.4.0 listener during upgrade/reload transitions.
+- Improved listener status tooltips and diagnostics for ports occupied by unrelated applications.
+
 ## 1.4.0
 
 - Redesigned the control panel for a cleaner, more compact VS Code-native layout.
