@@ -2,7 +2,7 @@
   "name": "claude-code-sound-alerts",
   "displayName": "Claude Code Sound Alerts",
   "description": "Reliable, secure, customizable Claude Code sound alerts with multi-window routing, per-event sounds, volume boost, repeats, and presets.",
-  "version": "1.6.2",
+  "version": "1.6.3",
   "publisher": "local",
   "license": "MIT",
   "engines": {

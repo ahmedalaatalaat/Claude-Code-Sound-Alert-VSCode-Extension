@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.3
+
+- Fixed first-run Windows audio playback when the WinMM helper assembly is compiled for the first time. `Add-Type -OutputAssembly` can save the DLL without loading `ClaudeSoundNative` into the current Windows PowerShell session; the extension now explicitly verifies the type and loads the freshly compiled DLL before calling `PlaySound`.
+- Preserved the cached WinMM assembly design, stale-lock recovery, repeat-in-one-process behavior, and PowerShell 5.1 / PowerShell 7 fallback.
+- Added a regression assertion against the generated Windows audio-host script so the compile-then-load requirement cannot regress.
+
 ## 1.6.2
 
 - Added stale WinMM helper-lock recovery: abandoned audio-host `.lock` files older than 30 seconds are removed before compilation, preventing a permanent 5-second delay after an interrupted PowerShell compile.

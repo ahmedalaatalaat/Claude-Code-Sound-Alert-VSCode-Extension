@@ -108,6 +108,15 @@ check('audio timeout grows with repeats, gaps, and WAV duration', () => {
   assert(many > one, `repeat timeout ${many} should exceed ${one}`);
 });
 
+
+check('Windows first-run compiled helper is loaded before PlaySound', () => {
+  const script = t.windowsAudioHostScript();
+  assert(
+    script.includes("Add-Type -TypeDefinition $src -OutputAssembly $dll; if (-not ('ClaudeSoundNative' -as [type])) { Add-Type -Path $dll }"),
+    'freshly compiled helper DLL is not explicitly loaded into the current PowerShell session'
+  );
+});
+
 check('Windows audio host self-heals stale DLL locks', () => {
   const script = t.windowsAudioHostScript();
   assert(script.includes('LastWriteTimeUtc'), 'stale-lock age check missing');

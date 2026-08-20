@@ -1,8 +1,8 @@
-# Claude Code Sound Alerts v1.6.2
+# Claude Code Sound Alerts v1.6.3
 
 A VS Code extension that plays configurable sound alerts for Claude Code lifecycle events.
 
-Version 1.6.2 is the final stability/polish pass on top of v1.6.1. It keeps the secure multi-window design and adds self-healing Windows audio locks, bounded audio-process timeouts, exact CRLF preservation, cleaner JSONC hook removal, and stronger adversarial regression tests.
+Version 1.6.3 is a Windows audio hotfix on top of v1.6.2. It fixes first-run playback on Windows PowerShell hosts where `Add-Type -OutputAssembly` writes the cached WinMM helper DLL without loading the generated `ClaudeSoundNative` type into that same process.
 
 ## Defaults
 
@@ -13,7 +13,9 @@ On a fresh install only two alerts are enabled:
 
 Every other alert starts **Off**. Use the **Minimal**, **Recommended**, or **Everything** presets, or enable individual events in the control panel.
 
-## What v1.6.2 fixes
+## What v1.6.3 fixes
+
+- First-run Windows playback now explicitly loads the freshly compiled WinMM helper DLL before calling `PlaySound`, preventing `Unable to find type [ClaudeSoundNative]`.
 
 - Windows audio-host cache locks now self-heal after an interrupted compile; stale lockfiles older than 30 seconds are removed automatically.
 - Every external audio process has a bounded timeout, preventing a hung player from permanently blocking all later alerts. The timeout budget accounts for the WAV duration, repeats, and repeat gaps.
@@ -209,7 +211,7 @@ The source package includes scripts for:
 
 - `npm run check` — JavaScript syntax check
 - `npm run lint` — ESLint
-- `npm test` — the smoke suite plus the 31-shape JSONC regression suite and third-review adversarial suite. Together they cover hook patch/install/uninstall idempotence, comment and CRLF preservation, all removal layouts, enabled-only hook generation, HTTP-hook timeouts, audio-process timeout behavior, stale Windows audio-lock recovery, bundled WAV validation, gain processing, and manifest invariants
+- `npm test` — the smoke suite plus the 31-shape JSONC regression suite and third-review adversarial suite, including a Windows compile-then-load audio-host regression assertion. Together they cover hook patch/install/uninstall idempotence, comment and CRLF preservation, all removal layouts, enabled-only hook generation, HTTP-hook timeouts, audio-process timeout behavior, stale Windows audio-lock recovery, bundled WAV validation, gain processing, and manifest invariants
 
 Development dependencies are declared for VS Code types and ESLint. The packaged VSIX excludes development/test files.
 

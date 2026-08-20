@@ -116,7 +116,7 @@ t.pcmWavInfo(t.scalePcmWav(extPcm, 125));
 
 // Manifest sanity checks for the stability/security release.
 const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
-assert.strictEqual(pkg.version, '1.6.2');
+assert.strictEqual(pkg.version, '1.6.3');
 assert.deepStrictEqual(pkg.activationEvents, ['onStartupFinished']);
 assert.strictEqual(pkg.contributes.configuration.properties['claudeSoundAlerts.serverPort'].scope, 'machine');
 assert.strictEqual(pkg.contributes.configuration.properties['claudeSoundAlerts.eventSettings'].scope, 'application');
