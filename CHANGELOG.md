@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.2
+
+- Added the user-provided **Done Fanfare** as a built-in sound and made it the default for **Claude Finished**.
+- Added the user-provided **Error Impact** as a built-in sound and made it the default for **Tool Failed**, **Permission Denied**, and **Claude API / Turn Error**.
+- Converted both supplied MP3 files to 44.1 kHz, stereo, 16-bit PCM WAV for reliable Windows playback.
+- Removed approximately 300 ms of silent lead-in from Error Impact for faster alerts.
+- Preserved existing per-event enablement, volume, and repeat settings while applying the new sounds.
+
 ## 1.3.1
 
 - Added the user-provided **Question Chime** as a built-in sound preset.

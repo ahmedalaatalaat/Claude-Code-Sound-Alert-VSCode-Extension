@@ -12,6 +12,8 @@ const EXTENSION_TAG = 'claude-code-sound-alerts';
 const RELAY_TAG = 'claude-sound-alerts-relay';
 const SOUND_PRESETS = [
   { id: 'question-chime', label: 'Question Chime' },
+  { id: 'done-fanfare', label: 'Done Fanfare' },
+  { id: 'error-impact', label: 'Error Impact' },
   { id: 'soft-bell', label: 'Soft Bell' },
   { id: 'bright-ping', label: 'Bright Ping' },
   { id: 'double-ping', label: 'Double Ping' },
@@ -41,16 +43,16 @@ const EVENT_DEFS = [
   { id:'preToolUse', hookEvent:'PreToolUse', category:'Tools', label:'Tool Starting', description:'Before any tool call, except special Question/Plan events above.', defaultEnabled:false, sound:'digital-pop', volume:20, repeat:1, noisy:true },
   { id:'permissionRequest', hookEvent:'PermissionRequest', category:'Attention', label:'Permission Requested', description:'A tool needs your permission decision.', defaultEnabled:true, sound:'bright-ping', volume:80, repeat:2 },
   { id:'postToolUse', hookEvent:'PostToolUse', category:'Tools', label:'Tool Succeeded', description:'After a tool call succeeds.', defaultEnabled:false, sound:'soft-pop', volume:20, repeat:1, noisy:true },
-  { id:'postToolUseFailure', hookEvent:'PostToolUseFailure', category:'Errors', label:'Tool Failed', description:'A Claude tool call fails.', defaultEnabled:true, sound:'alert-pulse', volume:90, repeat:2 },
+  { id:'postToolUseFailure', hookEvent:'PostToolUseFailure', category:'Errors', label:'Tool Failed', description:'A Claude tool call fails.', defaultEnabled:true, sound:'error-impact', volume:90, repeat:2 },
   { id:'postToolBatch', hookEvent:'PostToolBatch', category:'Tools', label:'Tool Batch Finished', description:'A full batch of parallel tool calls resolves.', defaultEnabled:false, sound:'calm-complete', volume:25, repeat:1 },
-  { id:'permissionDenied', hookEvent:'PermissionDenied', category:'Errors', label:'Permission Denied', description:'Auto mode denies a tool call.', defaultEnabled:true, sound:'alert-pulse', volume:85, repeat:2 },
+  { id:'permissionDenied', hookEvent:'PermissionDenied', category:'Errors', label:'Permission Denied', description:'Auto mode denies a tool call.', defaultEnabled:true, sound:'error-impact', volume:85, repeat:2 },
   { id:'notification', hookEvent:'Notification', category:'Attention', label:'Claude Notification', description:'Claude sends a notification, including input/idle/agent notifications.', defaultEnabled:true, sound:'soft-bell', volume:65, repeat:1 },
   { id:'subagentStart', hookEvent:'SubagentStart', category:'Agents', label:'Subagent Started', description:'A Claude subagent is spawned.', defaultEnabled:false, sound:'digital-pop', volume:25, repeat:1 },
   { id:'subagentStop', hookEvent:'SubagentStop', category:'Agents', label:'Subagent Finished', description:'A Claude subagent finishes.', defaultEnabled:true, sound:'calm-complete', volume:45, repeat:1 },
   { id:'taskCreated', hookEvent:'TaskCreated', category:'Tasks', label:'Task Created', description:'Claude creates a task.', defaultEnabled:false, sound:'soft-pop', volume:25, repeat:1 },
   { id:'taskCompleted', hookEvent:'TaskCompleted', category:'Tasks', label:'Task Completed', description:'Claude marks a task as completed.', defaultEnabled:true, sound:'success-chime', volume:45, repeat:1 },
-  { id:'stop', hookEvent:'Stop', category:'Turn', label:'Claude Finished', description:'Claude finishes responding normally.', defaultEnabled:true, sound:'success-chime', volume:55, repeat:1 },
-  { id:'stopFailure', hookEvent:'StopFailure', category:'Errors', label:'Claude API / Turn Error', description:'The turn ends due to an API/model/auth/rate-limit error.', defaultEnabled:true, sound:'alert-pulse', volume:100, repeat:3 },
+  { id:'stop', hookEvent:'Stop', category:'Turn', label:'Claude Finished', description:'Claude finishes responding normally.', defaultEnabled:true, sound:'done-fanfare', volume:55, repeat:1 },
+  { id:'stopFailure', hookEvent:'StopFailure', category:'Errors', label:'Claude API / Turn Error', description:'The turn ends due to an API/model/auth/rate-limit error.', defaultEnabled:true, sound:'error-impact', volume:100, repeat:3 },
   { id:'teammateIdle', hookEvent:'TeammateIdle', category:'Agents', label:'Teammate Idle', description:'An agent-team teammate is about to go idle.', defaultEnabled:true, sound:'soft-bell', volume:45, repeat:1 },
   { id:'configChange', hookEvent:'ConfigChange', category:'System', label:'Claude Config Changed', description:'Claude settings/policy/skills configuration changes.', defaultEnabled:false, sound:'digital-pop', volume:30, repeat:1 },
   { id:'cwdChanged', hookEvent:'CwdChanged', category:'System', label:'Working Directory Changed', description:'Claude changes the working directory.', defaultEnabled:false, sound:'soft-pop', volume:20, repeat:1 },
@@ -502,6 +504,22 @@ async function migrateV131QuestionSound(){
   log('Set the user-provided Question Chime as the Ask User Question sound.');
 }
 
+
+async function migrateV132DoneAndErrorSounds(){
+  if(extensionContext.globalState.get('v132DoneAndErrorSoundsApplied',false))return;
+  const raw={...(cfg().get('eventSettings',{})||{})};
+  const applySound=(id,sound)=>{
+    const def=EVENT_MAP.get(id);
+    const current=raw[id]&&typeof raw[id]==='object'?raw[id]:{};
+    raw[id]={...defaultEventSetting(def),...current,sound};
+  };
+  applySound('stop','done-fanfare');
+  for(const id of ['postToolUseFailure','permissionDenied','stopFailure']) applySound(id,'error-impact');
+  await cfg().update('eventSettings',raw,vscode.ConfigurationTarget.Global);
+  await extensionContext.globalState.update('v132DoneAndErrorSoundsApplied',true);
+  log('Set the user-provided Done Fanfare for Claude Finished and Error Impact for error events.');
+}
+
 async function migrateV12Settings(){
   if(extensionContext.globalState.get('v13MigrationDone',false))return;
   const legacyKeys=['questionSound','finishedSound','questionVolume','finishedVolume','questionSoundEnabled','finishedSoundEnabled','questionSoundPath','finishedSoundPath'];
@@ -596,6 +614,7 @@ async function activate(context){
   extensionContext=context; output=vscode.window.createOutputChannel('Claude Code Sound Alerts'); context.subscriptions.push(output);
   await migrateV12Settings();
   await migrateV131QuestionSound();
+  await migrateV132DoneAndErrorSounds();
   statusItem=vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right,100); statusItem.command='claudeSoundAlerts.openControlPanel'; statusItem.show(); context.subscriptions.push(statusItem); updateStatusBar();
   context.subscriptions.push(vscode.commands.registerCommand('claudeSoundAlerts.installHooks',()=>installHooks(true)));
   context.subscriptions.push(vscode.commands.registerCommand('claudeSoundAlerts.uninstallHooks',()=>uninstallHooks(true)));
@@ -614,7 +633,7 @@ async function activate(context){
     if(event.affectsConfiguration('claudeSoundAlerts.enabled')||event.affectsConfiguration('claudeSoundAlerts.serverPort'))startServer();
     if(event.affectsConfiguration('claudeSoundAlerts')){void sendUiState();updateStatusBar();}
   }));
-  startServer(); log('Extension v1.3.1 activated. Open the Claude Alerts control panel from the status bar.');
+  startServer(); log('Extension v1.3.2 activated. Open the Claude Alerts control panel from the status bar.');
 }
 function deactivate(){stopServer();}
 module.exports={activate,deactivate};
