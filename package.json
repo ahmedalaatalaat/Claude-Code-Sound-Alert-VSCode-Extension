@@ -1,8 +1,8 @@
 {
   "name": "claude-code-sound-alerts",
   "displayName": "Claude Code Sound Alerts",
-  "description": "Play sounds when Claude Code needs your input or finishes responding.",
-  "version": "1.1.0",
+  "description": "Play configurable sounds when Claude Code needs your input or finishes, with a built-in VS Code control panel.",
+  "version": "1.2.0",
   "publisher": "local",
   "license": "MIT",
   "engines": {
@@ -26,11 +26,16 @@
     "onCommand:claudeSoundAlerts.testFinishedSound",
     "onCommand:claudeSoundAlerts.configureSounds",
     "onCommand:claudeSoundAlerts.setQuestionVolume",
-    "onCommand:claudeSoundAlerts.setFinishedVolume"
+    "onCommand:claudeSoundAlerts.setFinishedVolume",
+    "onCommand:claudeSoundAlerts.openControlPanel"
   ],
   "main": "./extension.js",
   "contributes": {
     "commands": [
+      {
+        "command": "claudeSoundAlerts.openControlPanel",
+        "title": "Claude Sound Alerts: Open Control Panel"
+      },
       {
         "command": "claudeSoundAlerts.installHooks",
         "title": "Claude Sound Alerts: Install Claude Code Hooks"
@@ -125,12 +130,12 @@
         "claudeSoundAlerts.questionSoundPath": {
           "type": "string",
           "default": "",
-          "description": "Optional path to a custom question/attention WAV file. Leave empty for the built-in sound."
+          "description": "Path to a custom PCM WAV file used when Question Sound is set to Custom."
         },
         "claudeSoundAlerts.finishedSoundPath": {
           "type": "string",
           "default": "",
-          "description": "Optional path to a custom finished WAV file. Leave empty for the built-in sound."
+          "description": "Path to a custom PCM WAV file used when Finished Sound is set to Custom."
         },
         "claudeSoundAlerts.debounceMs": {
           "type": "number",
@@ -157,6 +162,68 @@
           "minimum": 0,
           "maximum": 100,
           "description": "Finished sound volume from 0 to 100 percent."
+        },
+        "claudeSoundAlerts.questionSound": {
+          "type": "string",
+          "default": "soft-bell",
+          "enum": [
+            "soft-bell",
+            "bright-ping",
+            "double-ping",
+            "gentle-chime",
+            "digital-pop",
+            "warm-knock",
+            "success-chime",
+            "calm-complete",
+            "soft-pop",
+            "alert-pulse",
+            "custom"
+          ],
+          "enumDescriptions": [
+            "Soft Bell",
+            "Bright Ping",
+            "Double Ping",
+            "Gentle Chime",
+            "Digital Pop",
+            "Warm Knock",
+            "Success Chime",
+            "Calm Complete",
+            "Soft Pop",
+            "Alert Pulse",
+            "Custom WAV file"
+          ],
+          "description": "Sound used for question/attention alerts. The control panel is the easiest way to change this."
+        },
+        "claudeSoundAlerts.finishedSound": {
+          "type": "string",
+          "default": "success-chime",
+          "enum": [
+            "soft-bell",
+            "bright-ping",
+            "double-ping",
+            "gentle-chime",
+            "digital-pop",
+            "warm-knock",
+            "success-chime",
+            "calm-complete",
+            "soft-pop",
+            "alert-pulse",
+            "custom"
+          ],
+          "enumDescriptions": [
+            "Soft Bell",
+            "Bright Ping",
+            "Double Ping",
+            "Gentle Chime",
+            "Digital Pop",
+            "Warm Knock",
+            "Success Chime",
+            "Calm Complete",
+            "Soft Pop",
+            "Alert Pulse",
+            "Custom WAV file"
+          ],
+          "description": "Sound used for finished alerts. The control panel is the easiest way to change this."
         }
       }
     }
