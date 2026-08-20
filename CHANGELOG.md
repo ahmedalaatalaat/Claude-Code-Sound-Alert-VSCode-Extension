@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.5.0
+
+- Added true multi-listener mode: every VS Code window owns an independent localhost listener.
+- If the starting port is busy, the extension automatically tries the next port in the configured range.
+- Added a lightweight local relay registry so Claude hooks route each event to one appropriate active VS Code listener, preferring the listener whose workspace contains the hook `cwd`.
+- Removed the single-port shared-owner limitation from v1.4.1.
+- Added automatic listener heartbeat/cleanup and failover to another active listener if a target disappears.
+- Updated the extension icon to the newly supplied notification image.
+- Claude hooks now use the local relay command for dynamic port discovery; run Install / Update Hooks once after upgrading.
+
 ## 1.4.1
 
 - Fixed multi-window listener status and ownership.

@@ -1,4 +1,4 @@
-# Claude Code Sound Alerts
+# Claude Code Sound Alerts v1.5.0
 
 A VS Code extension that plays configurable WAV alerts for Claude Code lifecycle events.
 
@@ -117,3 +117,10 @@ This avoids duplicate listeners and duplicate sounds while still supporting seve
 ## Privacy
 
 Claude hooks send event JSON only to `127.0.0.1` on the configured local port. The extension does not intentionally transmit Claude event data to an external service.
+
+
+## Multi-window listeners
+
+Version 1.5 gives every VS Code window its own localhost listener. The configured `serverPort` is the starting port (47391 by default), and each additional window automatically selects the next available port within `listenerPortCount` (20 by default). Claude hooks use a local relay registry to route each event to one active listener, preferring the listener whose VS Code workspace contains Claude's current working directory. This prevents port conflicts without producing duplicate sounds in every window.
+
+After upgrading from an older release, open the control panel and click **Install / Update Hooks** once so Claude uses the dynamic relay.

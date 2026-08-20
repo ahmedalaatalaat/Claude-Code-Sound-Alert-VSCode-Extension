@@ -1,8 +1,8 @@
 {
   "name": "claude-code-sound-alerts",
   "displayName": "Claude Code Sound Alerts",
-  "description": "Customizable Claude Code sound alerts with a polished control panel, primary Question/Finished alerts, presets, volume boost, repeats, and per-event controls.",
-  "version": "1.4.1",
+  "description": "Customizable Claude Code sound alerts with dynamic multi-window listeners, Question/Finished primary alerts, presets, volume boost, repeats, and per-event controls.",
+  "version": "1.5.0",
   "publisher": "local",
   "license": "MIT",
   "engines": {
@@ -94,7 +94,14 @@
           "default": 47391,
           "minimum": 1024,
           "maximum": 65535,
-          "description": "Localhost port used by Claude Code HTTP hooks. Reinstall hooks after changing this."
+          "description": "Starting localhost port for dynamic listeners. Each VS Code window automatically uses the first free port from this value upward."
+        },
+        "claudeSoundAlerts.listenerPortCount": {
+          "type": "number",
+          "default": 20,
+          "minimum": 1,
+          "maximum": 100,
+          "description": "Number of localhost ports available for simultaneous VS Code listener instances. Each window automatically picks a free port."
         },
         "claudeSoundAlerts.questionSoundEnabled": {
           "type": "boolean",

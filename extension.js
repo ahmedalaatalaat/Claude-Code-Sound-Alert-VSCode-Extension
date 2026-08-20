@@ -74,8 +74,12 @@ let server;
 let output;
 let extensionContext;
 let retryTimer;
-let listenerMode = 'inactive'; // inactive | owned | shared | disabled
+let heartbeatTimer;
+let listenerMode = 'inactive'; // inactive | owned | disabled
 let listenerDetail = '';
+let listenerPort = null;
+let listenerGeneration = 0;
+const listenerId = crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex');
 let controlPanel;
 let statusItem;
 const lastPlayedAt = new Map();
@@ -84,63 +88,138 @@ function cfg() { return vscode.workspace.getConfiguration('claudeSoundAlerts'); 
 function log(message) { output?.appendLine(`[${new Date().toLocaleTimeString()}] ${message}`); }
 function clamp(n, min, max) { n = Number(n); return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : min; }
 function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
-function getPort() { return clamp(cfg().get('serverPort', 47391), 1024, 65535); }
+function getBasePort() { return clamp(cfg().get('serverPort', 47391), 1024, 65535); }
+function getPortCount() { return Math.round(clamp(cfg().get('listenerPortCount', 20), 1, 100)); }
+function getPort() { return listenerPort || getBasePort(); }
 function endpointFor(port = getPort()) { return `http://127.0.0.1:${port}/${EXTENSION_TAG}/hook`; }
 function healthPath() { return `/${EXTENSION_TAG}/health`; }
-function listenerIsActive() { return listenerMode === 'owned' || listenerMode === 'shared'; }
+function listenerIsActive() { return listenerMode === 'owned' && Number.isInteger(listenerPort); }
+function listenerRegistryDir() { return path.join(os.homedir(), '.claude', `${EXTENSION_TAG}-listeners`); }
+function listenerRegistryFile() { return path.join(listenerRegistryDir(), `${listenerId}.json`); }
+function workspaceRoots() {
+  return (vscode.workspace.workspaceFolders || [])
+    .map(f => f?.uri?.fsPath)
+    .filter(Boolean)
+    .map(p => path.resolve(p));
+}
+async function writeListenerRegistration() {
+  if (!listenerIsActive()) return;
+  const dir=listenerRegistryDir(); await fs.promises.mkdir(dir,{recursive:true});
+  const record={tag:EXTENSION_TAG,id:listenerId,pid:process.pid,port:listenerPort,heartbeatAt:Date.now(),workspaceRoots:workspaceRoots()};
+  const file=listenerRegistryFile(), temp=`${file}.${process.pid}.tmp`;
+  await fs.promises.writeFile(temp,JSON.stringify(record),'utf8');
+  await fs.promises.rename(temp,file);
+}
+async function removeListenerRegistration() {
+  try { await fs.promises.unlink(listenerRegistryFile()); } catch(error) { if(error?.code!=='ENOENT') log(`Could not remove listener registration: ${error.message||error}`); }
+}
+async function cleanupStaleRegistrations(maxAgeMs=30000) {
+  try {
+    const dir=listenerRegistryDir(); const names=await fs.promises.readdir(dir); const now=Date.now();
+    await Promise.all(names.filter(n=>n.endsWith('.json')).map(async name=>{
+      const file=path.join(dir,name);
+      try { const data=JSON.parse(await fs.promises.readFile(file,'utf8')); if(!data?.heartbeatAt || now-Number(data.heartbeatAt)>maxAgeMs) await fs.promises.unlink(file); } catch(_) {}
+    }));
+  } catch(error) { if(error?.code!=='ENOENT') log(`Could not clean listener registry: ${error.message||error}`); }
+}
+function startHeartbeat() {
+  if(heartbeatTimer) clearInterval(heartbeatTimer);
+  heartbeatTimer=setInterval(()=>{ void writeListenerRegistration(); },3000);
+}
+function stopHeartbeat() { if(heartbeatTimer){clearInterval(heartbeatTimer);heartbeatTimer=undefined;} }
 
-function probeListener(port = getPort(), allowLegacy = true) {
-  return new Promise(resolve => {
-    let settled = false;
-    const finish = value => { if (!settled) { settled = true; resolve(value); } };
-    const req = http.request({ host:'127.0.0.1', port, path:healthPath(), method:'GET', timeout:900 }, res => {
-      let raw='';
-      res.setEncoding('utf8');
-      res.on('data', c => { raw += c; if (raw.length > 8192) req.destroy(); });
-      res.on('end', () => {
-        try {
-          const data = raw ? JSON.parse(raw) : {};
-          if (res.statusCode === 200 && data && data.ok === true && data.tag === EXTENSION_TAG) return finish({ active:true, legacy:false, pid:data.pid });
-        } catch(_) {}
-        if (!allowLegacy) return finish({ active:false });
-        probeLegacyListener(port).then(finish);
+function probeListener(port) {
+  return new Promise(resolve=>{
+    const req=http.request({host:'127.0.0.1',port,path:healthPath(),method:'GET',timeout:700},res=>{
+      let raw=''; res.setEncoding('utf8'); res.on('data',c=>raw+=c); res.on('end',()=>{
+        try { const data=raw?JSON.parse(raw):{}; if(res.statusCode===200 && data?.ok===true && data?.tag===EXTENSION_TAG) return resolve({active:true,free:false,data}); } catch(_) {}
+        resolve({active:false,free:false});
       });
     });
-    req.on('timeout', () => { req.destroy(); if (allowLegacy) probeLegacyListener(port).then(finish); else finish({active:false}); });
-    req.on('error', () => { if (allowLegacy) probeLegacyListener(port).then(finish); else finish({active:false}); });
-    req.end();
+    req.on('timeout',()=>{req.destroy();resolve({active:false,free:false});});
+    req.on('error',error=>resolve({active:false,free:error?.code==='ECONNREFUSED'})); req.end();
   });
 }
-
-function probeLegacyListener(port = getPort()) {
-  return new Promise(resolve => {
-    const body = JSON.stringify({ hook_event_name:'__claude_sound_alerts_probe__', probe:true });
-    let settled = false;
-    const finish = value => { if (!settled) { settled = true; resolve(value); } };
-    const req = http.request({ host:'127.0.0.1', port, path:`/${EXTENSION_TAG}/hook`, method:'POST', timeout:900, headers:{'Content-Type':'application/json','Content-Length':Buffer.byteLength(body)} }, res => {
-      res.resume();
-      res.on('end', () => finish({ active:res.statusCode === 204, legacy:res.statusCode === 204 }));
-    });
-    req.on('timeout', () => { req.destroy(); finish({active:false}); });
-    req.on('error', () => finish({active:false}));
-    req.write(body); req.end();
-  });
-}
-
-function scheduleListenerMonitor(delay = 5000) {
-  if (retryTimer) clearTimeout(retryTimer);
-  retryTimer = setTimeout(async () => {
-    retryTimer = undefined;
-    if (!cfg().get('enabled', true)) return;
-    if (listenerMode === 'shared') {
-      const probe = await probeListener(getPort());
-      if (probe.active) { scheduleListenerMonitor(5000); return; }
-      log('Shared listener disappeared; attempting to take ownership.');
-      listenerMode = 'inactive'; listenerDetail = 'Shared listener disappeared; taking over.';
-      updateStatusBar(); void sendUiState();
+async function activeListenerRecords() {
+  const now=Date.now(), records=[];
+  try {
+    const dir=listenerRegistryDir(); const names=await fs.promises.readdir(dir);
+    for(const name of names.filter(n=>n.endsWith('.json'))) {
+      try {
+        const d=JSON.parse(await fs.promises.readFile(path.join(dir,name),'utf8'));
+        if(d?.tag===EXTENSION_TAG && Number(d.port)>0 && now-Number(d.heartbeatAt)>=0 && now-Number(d.heartbeatAt)<15000) records.push(d);
+      } catch(_) {}
     }
-    startServer();
-  }, delay);
+  } catch(error) { if(error?.code!=='ENOENT') log(`Could not read listener registry: ${error.message||error}`); }
+  return records;
+}
+function pathMatchScore(cwd,root) {
+  if(!cwd || !root) return 0;
+  try {
+    const c=path.resolve(cwd), r=path.resolve(root);
+    const relative=path.relative(r,c);
+    const inside=relative==='' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+    if(!inside) return 0;
+    return process.platform==='win32' ? r.toLowerCase().length : r.length;
+  } catch(_) { return 0; }
+}
+async function rankedListenerRecords(body) {
+  const cwd=typeof body?.cwd==='string'?body.cwd:'';
+  const records=await activeListenerRecords();
+  return records.map(d=>{
+    let score=0; for(const root of (Array.isArray(d.workspaceRoots)?d.workspaceRoots:[])) score=Math.max(score,pathMatchScore(cwd,root));
+    return {d,score,heartbeat:Number(d.heartbeatAt)||0};
+  }).sort((a,b)=>b.score-a.score || b.heartbeat-a.heartbeat).map(x=>x.d);
+}
+function forwardHook(port,body) {
+  return new Promise(resolve=>{
+    const raw=JSON.stringify(body||{});
+    const req=http.request({host:'127.0.0.1',port,path:`/${EXTENSION_TAG}/hook`,method:'POST',timeout:1000,headers:{'Content-Type':'application/json','Content-Length':Buffer.byteLength(raw),'X-Claude-Sound-Alerts-Routed':'1'}},res=>{res.resume();res.on('end',()=>resolve(res.statusCode===204));});
+    req.on('timeout',()=>{req.destroy();resolve(false);}); req.on('error',()=>resolve(false)); req.write(raw); req.end();
+  });
+}
+async function routeIncomingHook(body) {
+  const candidates=await rankedListenerRecords(body);
+  for(const d of candidates) {
+    const port=Number(d.port);
+    if(port===listenerPort) {
+      const result=classifyHook(body); if(result) void playProfile(result.id,result.reason); else log(`Ignored/disabled hook event: ${body.hook_event_name||'unknown'}${body.tool_name?` / ${body.tool_name}`:''}${body.notification_type?` / ${body.notification_type}`:''}`);
+      return true;
+    }
+    if(await forwardHook(port,body)) return true;
+  }
+  // Registry may not be ready during startup; fall back to this listener.
+  if(listenerIsActive()) {
+    const result=classifyHook(body); if(result) void playProfile(result.id,result.reason); return true;
+  }
+  return false;
+}
+async function configuredBrokerPort() {
+  try {
+    const settings=await readClaudeSettings();
+    for(const groups of Object.values(settings.hooks||{})) for(const group of (Array.isArray(groups)?groups:[])) for(const h of (Array.isArray(group?.hooks)?group.hooks:[])) {
+      if(h?.type==='http' && typeof h.url==='string' && h.url.includes(`/${EXTENSION_TAG}/hook`)) {
+        try { const u=new URL(h.url); const p=Number(u.port); if(Number.isInteger(p)&&p>0) return p; } catch(_) {}
+      }
+    }
+  } catch(_) {}
+  return null;
+}
+function scheduleBrokerMonitor(delay=5000) {
+  if(retryTimer) clearTimeout(retryTimer);
+  retryTimer=setTimeout(async()=>{
+    retryTimer=undefined;
+    if(!cfg().get('enabled',true)){scheduleBrokerMonitor(5000);return;}
+    const broker=await configuredBrokerPort();
+    if(broker && listenerPort!==broker) {
+      const probe=await probeListener(broker);
+      if(!probe.active && probe.free) {
+        log(`Configured router port ${broker} is free; attempting automatic takeover.`);
+        await startServer(broker);
+      }
+    }
+    scheduleBrokerMonitor(5000);
+  },delay);
 }
 
 function defaultEventSetting(def) {
@@ -402,16 +481,10 @@ async function playProfile(id, reason, force=false, overrides={}) {
   }
 }
 
-function startServer() {
-  stopServer();
-  if (!cfg().get('enabled',true)) {
-    listenerMode='disabled'; listenerDetail='Sound alerts are globally disabled.';
-    log('Listener disabled by settings.'); updateStatusBar(); void sendUiState(); return;
-  }
-  const port=getPort();
-  server=http.createServer((req,res)=>{
+function createListenerServer(port) {
+  return http.createServer((req,res)=>{
     if (req.method==='GET' && req.url===healthPath()) {
-      const payload=JSON.stringify({ok:true,tag:EXTENSION_TAG,pid:process.pid,port});
+      const payload=JSON.stringify({ok:true,tag:EXTENSION_TAG,id:listenerId,pid:process.pid,port,workspaceRoots:workspaceRoots()});
       res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store','Content-Length':Buffer.byteLength(payload)}); res.end(payload); return;
     }
     if (req.method!=='POST' || req.url!==`/${EXTENSION_TAG}/hook`) { res.writeHead(404); res.end(); return; }
@@ -421,43 +494,67 @@ function startServer() {
       try {
         const body=raw?JSON.parse(raw):{};
         if (body?.probe === true && body?.hook_event_name === '__claude_sound_alerts_probe__') { res.writeHead(204); res.end(); return; }
-        const result=classifyHook(body);
-        if(result) void playProfile(result.id,result.reason);
-        else log(`Ignored/disabled hook event: ${body.hook_event_name||'unknown'}${body.tool_name?` / ${body.tool_name}`:''}${body.notification_type?` / ${body.notification_type}`:''}`);
-        // 204 is deliberately non-interfering for notification-only HTTP hooks.
+        const routed=req.headers['x-claude-sound-alerts-routed']==='1';
+        if(routed) {
+          const result=classifyHook(body);
+          if(result) void playProfile(result.id,result.reason);
+          else log(`Ignored/disabled hook event: ${body.hook_event_name||'unknown'}${body.tool_name?` / ${body.tool_name}`:''}${body.notification_type?` / ${body.notification_type}`:''}`);
+        } else {
+          void routeIncomingHook(body);
+        }
         res.writeHead(204); res.end();
       } catch(error) { log(`Invalid hook request: ${error.message||error}`); res.writeHead(400); res.end(); }
     });
   });
-  server.on('error',error=>{
-    log(`Listener error on port ${port}: ${error.message||error}`);
-    if(error?.code==='EADDRINUSE') {
-      try{server?.close();}catch(_){} server=undefined;
-      void (async()=>{
-        const probe=await probeListener(port);
-        if(probe.active) {
-          listenerMode='shared';
-          listenerDetail=probe.legacy ? 'Shared listener is owned by another VS Code window (legacy-compatible).' : 'Shared listener is owned by another VS Code window.';
-          log(`Listener is active in another VS Code window${probe.legacy?' (legacy-compatible)':''}. Using shared listener on port ${port}.`);
-        } else {
-          listenerMode='inactive'; listenerDetail=`Port ${port} is occupied by another application.`;
-          log(`Port ${port} is occupied, but it is not a Claude Sound Alerts listener.`);
-        }
-        updateStatusBar(); void sendUiState(); scheduleListenerMonitor(5000);
-      })();
-      return;
-    }
-    listenerMode='inactive'; listenerDetail=error?.message||String(error);
-    vscode.window.showErrorMessage(`Claude Sound Alerts could not listen on localhost:${port}.`); updateStatusBar(); void sendUiState(); scheduleListenerMonitor(5000);
-  });
-  server.listen(port,'127.0.0.1',()=>{
-    listenerMode='owned'; listenerDetail='This VS Code window owns the listener.';
-    log(`Listening for Claude Code hooks at ${endpointFor(port)}`); updateStatusBar(); void sendUiState();
+}
+function tryListen(serverToUse, port) {
+  return new Promise((resolve,reject)=>{
+    const onError=error=>{cleanup();reject(error);};
+    const onListening=()=>{cleanup();resolve();};
+    const cleanup=()=>{serverToUse.off('error',onError);serverToUse.off('listening',onListening);};
+    serverToUse.once('error',onError); serverToUse.once('listening',onListening); serverToUse.listen(port,'127.0.0.1');
   });
 }
-function stopServer(){
+async function startServer(preferredPort=null) {
+  const generation=++listenerGeneration;
+  stopServer(false,false);
+  await removeListenerRegistration();
+  if (!cfg().get('enabled',true)) {
+    listenerMode='disabled'; listenerDetail='Sound alerts are globally disabled.';
+    log('Listener disabled by settings.'); updateStatusBar(); void sendUiState(); return;
+  }
+  await cleanupStaleRegistrations();
+  const base=getBasePort(), count=getPortCount();
+  const ports=[]; if(Number.isInteger(preferredPort)&&preferredPort>=1024&&preferredPort<=65535) ports.push(preferredPort);
+  for(let offset=0; offset<count; offset++){const p=base+offset;if(p<=65535&&!ports.includes(p))ports.push(p);}
+  for(const port of ports) {
+    if(generation!==listenerGeneration) return;
+    const candidate=createListenerServer(port);
+    try {
+      await tryListen(candidate,port);
+      if(generation!==listenerGeneration){try{candidate.close();}catch(_){} return;}
+      server=candidate; listenerPort=port; listenerMode='owned';
+      listenerDetail=offset===0 ? `Listening on port ${port}.` : `Port ${base} was busy; automatically switched to port ${port}.`;
+      server.on('error',error=>{log(`Listener runtime error on port ${port}: ${error.message||error}`);});
+      log(`Listening for Claude Code hooks at ${endpointFor(port)} (listener ${listenerId.slice(0,8)}).`);
+      await writeListenerRegistration(); startHeartbeat(); scheduleBrokerMonitor(5000); updateStatusBar(); void sendUiState(); return;
+    } catch(error) {
+      try{candidate.close();}catch(_){}
+      if(error?.code==='EADDRINUSE' || error?.code==='EACCES') {
+        log(`Port ${port} unavailable (${error.code}); trying the next listener port.`); continue;
+      }
+      log(`Listener error on port ${port}: ${error.message||error}`);
+    }
+  }
+  listenerMode='inactive'; listenerPort=null; listenerDetail=`No free localhost listener port was found in ${base}-${Math.min(65535,base+count-1)}.`;
+  log(listenerDetail); vscode.window.showErrorMessage(`Claude Sound Alerts could not find a free listener port in ${base}-${Math.min(65535,base+count-1)}.`); scheduleBrokerMonitor(5000); updateStatusBar(); void sendUiState();
+}
+function stopServer(invalidate=true,removeRegistration=true){
+  if(invalidate) listenerGeneration++;
   if(retryTimer){clearTimeout(retryTimer);retryTimer=undefined;}
+  stopHeartbeat(); if(removeRegistration) void removeListenerRegistration();
   if(server){try{server.close();}catch(_){} server=undefined;}
+  listenerPort=null;
   if(listenerMode!=='disabled'){listenerMode='inactive'; listenerDetail='';}
 }
 
@@ -470,7 +567,7 @@ async function ensureRelayScript(){
     const text = `param([string]$Url)\n$ErrorActionPreference = 'SilentlyContinue'\n$body = [Console]::In.ReadToEnd()\ntry { Invoke-WebRequest -UseBasicParsing -Uri $Url -Method Post -ContentType 'application/json' -Body $body -TimeoutSec 2 | Out-Null } catch {}\nexit 0\n`;
     await fs.promises.writeFile(file,text,'utf8');
   } else {
-    const text = `#!/bin/sh\nurl="$1"\nif command -v curl >/dev/null 2>&1; then curl -sS --max-time 2 -X POST -H 'Content-Type: application/json' --data-binary @- "$url" >/dev/null 2>&1 || true; else cat >/dev/null; fi\nexit 0\n`;
+    const text = `#!/bin/sh\nurl=\"$1\"\nif command -v curl >/dev/null 2>&1; then curl -sS --max-time 2 -X POST -H 'Content-Type: application/json' --data-binary @- \"$url\" >/dev/null 2>&1 || true; else cat >/dev/null; fi\nexit 0\n`;
     await fs.promises.writeFile(file,text,{encoding:'utf8',mode:0o700}); try{await fs.promises.chmod(file,0o700);}catch(_){}
   }
   return file;
@@ -487,7 +584,6 @@ function desiredHookGroups(url){
   const out={};
   const httpEvents = EVENT_DEFS.filter(d=>!d.virtual && !d.unavailable && d.transport!=='command' && d.hookEvent!=='FileChanged').map(d=>d.hookEvent);
   for(const event of new Set(httpEvents)) out[event]=[{hooks:[hookHandler(url)]}];
-  // Capture every PreToolUse once; the listener distinguishes AskUserQuestion/ExitPlanMode from generic tool starts.
   out.PreToolUse=[{hooks:[hookHandler(url)]}];
   out.SessionStart=[{hooks:[commandRelayHandler(url)]}];
   out.Setup=[{hooks:[commandRelayHandler(url)]}];
@@ -495,6 +591,7 @@ function desiredHookGroups(url){
   if(names.length) out.FileChanged=[{matcher:[...new Set(names)].join('|'),hooks:[hookHandler(url)]}];
   return out;
 }
+
 function isOurHandler(handler){
   if(!handler || typeof handler!=='object') return false;
   if(handler.type==='http' && typeof handler.url==='string' && handler.url.includes(`/${EXTENSION_TAG}/hook`)) return true;
@@ -524,7 +621,7 @@ async function writeClaudeSettings(settings){
 }
 async function hookInstallStatus(){
   try{
-    const settings=await readClaudeSettings(); const desired=desiredHookGroups(endpointFor(getPort()));
+    const settings=await readClaudeSettings(); const desired=desiredHookGroups(endpointFor(listenerPort||getBasePort()));
     let installed=0,total=0;
     for(const event of Object.keys(desired)) {
       total++;
@@ -537,7 +634,10 @@ async function hookInstallStatus(){
 async function installHooks(showMessage=true){
   try{
     await ensureRelayScript();
-    const url=endpointFor(getPort()); const settings=removeOurHooksFromSettings(await readClaudeSettings()); settings.hooks=settings.hooks||{};
+    if(!listenerIsActive()) { await startServer(); }
+    if(!listenerIsActive()) throw new Error('No active localhost listener is available.');
+    const url=endpointFor(listenerPort);
+    const settings=removeOurHooksFromSettings(await readClaudeSettings()); settings.hooks=settings.hooks||{};
     for(const [event,groups] of Object.entries(desiredHookGroups(url))) {
       settings.hooks[event]=Array.isArray(settings.hooks[event])?settings.hooks[event]:[]; settings.hooks[event].push(...groups);
     }
@@ -688,10 +788,10 @@ async function applyPreset(name){
 
 function nonce(){return crypto.randomBytes(16).toString('base64');}
 async function getUiState(){
-  const hs=await hookInstallStatus();
+  const hs=await hookInstallStatus(); const brokerPort=await configuredBrokerPort();
   return {
     enabled:cfg().get('enabled',true), visualNotifications:cfg().get('showVisualNotifications',false), repeatGapMs:Math.round(clamp(cfg().get('repeatGapMs',150),0,3000)),
-    hooks:hs, listenerActive:listenerIsActive(), listenerMode, listenerDetail, platform:process.platform,
+    hooks:hs, listenerActive:listenerIsActive(), listenerMode, listenerDetail, listenerPort, brokerPort, listenerBasePort:getBasePort(), listenerPortCount:getPortCount(), platform:process.platform,
     events:EVENT_DEFS.map(d=>({...d,setting:eventSetting(d.id)})), categories:CATEGORIES, sounds:allSoundOptions(), watchedFiles:cfg().get('watchedFiles',[])||[], activePreset:activePresetName()
   };
 }
@@ -837,7 +937,7 @@ function eventCard(e,primary){const s=e.setting||{};const locked=!!e.unavailable
 function bindCards(){document.querySelectorAll('.event').forEach(card=>{const id=card.dataset.id;const en=card.querySelector('.evtEnabled'),sound=card.querySelector('.evtSound'),vol=card.querySelector('.evtVolume'),rep=card.querySelector('.evtRepeat'),preview=card.querySelector('.preview');if(en)en.addEventListener('change',e=>post('setEvent',{id,key:'enabled',value:e.target.checked}));if(sound)sound.addEventListener('change',e=>post('setEvent',{id,key:'sound',value:e.target.value}));if(vol){vol.addEventListener('input',e=>{card.querySelector('.value').textContent=e.target.value+'%';card.querySelector('.boost').textContent=Number(e.target.value)>100?'BOOST':''});vol.addEventListener('change',e=>post('setEvent',{id,key:'volume',value:Number(e.target.value)}))}if(rep)rep.addEventListener('change',e=>post('setEvent',{id,key:'repeat',value:Number(e.target.value)}));if(preview)preview.addEventListener('click',()=>post('preview',{id,volume:Number(vol.value),repeat:Number(rep.value),sound:sound.value}))})}
 function applyFilter(){const q=$('search').value.trim().toLowerCase(),cat=$('category').value;document.querySelectorAll('#events .event').forEach(c=>{c.style.display=(!q||c.dataset.search.includes(q))&&(!cat||c.dataset.category===cat)?'':'none'})}
 function renderPreset(){document.querySelectorAll('[data-preset]').forEach(b=>b.classList.toggle('active',b.dataset.preset===state.activePreset));$('customPreset').classList.toggle('show',state.activePreset==='custom')}
-function render(){const hs=state.hooks||{};$('hookStatus').textContent=hs.complete?'✓ Hooks installed ('+hs.installed+'/'+hs.total+')':'⚠ Hooks incomplete ('+hs.installed+'/'+hs.total+')';$('hookStatus').className='pill '+(hs.complete?'ok':'warn');const lm=state.listenerMode||'inactive';$('listenerStatus').textContent=lm==='owned'?'● Listener active — this window':lm==='shared'?'● Listener active — shared':lm==='disabled'?'○ Listener disabled':'○ Listener inactive';$('listenerStatus').className='pill '+(state.listenerActive?'ok':'warn');$('listenerStatus').title=state.listenerDetail||'';$('enabled').checked=!!state.enabled;$('visual').checked=!!state.visualNotifications;$('gap').value=state.repeatGapMs;$('watchedFiles').value=(state.watchedFiles||[]).join(', ');const currentCat=$('category').value;$('category').innerHTML='<option value="">All categories</option>'+(state.categories||[]).map(c=>'<option value="'+esc(c)+'">'+esc(c)+'</option>').join('');if((state.categories||[]).includes(currentCat))$('category').value=currentCat;const primaryIds=new Set(['askUserQuestion','stop']);const primary=(state.events||[]).filter(e=>primaryIds.has(e.id)).sort((a,b)=>a.id==='askUserQuestion'?-1:1);const others=(state.events||[]).filter(e=>!primaryIds.has(e.id));$('primaryEvents').innerHTML=primary.map(e=>eventCard(e,true)).join('');$('events').innerHTML=others.map(e=>eventCard(e,false)).join('');renderLibrary();renderPreset();bindCards();applyFilter()}
+function render(){const hs=state.hooks||{};$('hookStatus').textContent=hs.complete?'✓ Hooks installed ('+hs.installed+'/'+hs.total+')':'⚠ Hooks incomplete ('+hs.installed+'/'+hs.total+')';$('hookStatus').className='pill '+(hs.complete?'ok':'warn');const lm=state.listenerMode||'inactive';$('listenerStatus').textContent=lm==='owned'?'● Listener '+state.listenerPort+(state.brokerPort===state.listenerPort?' — router':''):lm==='disabled'?'○ Listener disabled':'○ Listener inactive';$('listenerStatus').className='pill '+(state.listenerActive?'ok':'warn');$('listenerStatus').title=state.listenerDetail||'';$('enabled').checked=!!state.enabled;$('visual').checked=!!state.visualNotifications;$('gap').value=state.repeatGapMs;$('watchedFiles').value=(state.watchedFiles||[]).join(', ');const currentCat=$('category').value;$('category').innerHTML='<option value="">All categories</option>'+(state.categories||[]).map(c=>'<option value="'+esc(c)+'">'+esc(c)+'</option>').join('');if((state.categories||[]).includes(currentCat))$('category').value=currentCat;const primaryIds=new Set(['askUserQuestion','stop']);const primary=(state.events||[]).filter(e=>primaryIds.has(e.id)).sort((a,b)=>a.id==='askUserQuestion'?-1:1);const others=(state.events||[]).filter(e=>!primaryIds.has(e.id));$('primaryEvents').innerHTML=primary.map(e=>eventCard(e,true)).join('');$('events').innerHTML=others.map(e=>eventCard(e,false)).join('');renderLibrary();renderPreset();bindCards();applyFilter()}
 $('installHooks').addEventListener('click',()=>post('installHooks'));$('removeHooks').addEventListener('click',()=>post('removeHooks'));$('openLog').addEventListener('click',()=>post('openLog'));$('addSound').addEventListener('click',()=>post('addSound'));document.querySelectorAll('[data-preset]').forEach(b=>b.addEventListener('click',()=>{b.disabled=true;post('applyPreset',{name:b.dataset.preset});setTimeout(()=>{b.disabled=false},500)}));$('enabled').addEventListener('change',e=>post('setGlobal',{key:'enabled',value:e.target.checked}));$('visual').addEventListener('change',e=>post('setGlobal',{key:'showVisualNotifications',value:e.target.checked}));$('gap').addEventListener('change',e=>post('setGlobal',{key:'repeatGapMs',value:Number(e.target.value)}));$('watchedFiles').addEventListener('change',e=>post('setWatchedFiles',{value:e.target.value}));$('search').addEventListener('input',applyFilter);$('category').addEventListener('change',applyFilter);window.addEventListener('message',ev=>{const m=ev.data;if(m.type==='state'){state=m.state;render()}if(m.type==='toast'){$('toast').textContent=m.text||'';if(m.text)setTimeout(()=>{if($('toast').textContent===m.text)$('toast').textContent=''},3000)}});render()})();
 </script></body></html>`;
 }
@@ -867,7 +967,7 @@ async function openControlPanel(){
     }catch(error){log(`Control panel error: ${error.stack||error}`);controlPanel?.webview.postMessage({type:'toast',text:`Error: ${error.message||error}`});}
   },null,extensionContext.subscriptions);
 }
-function updateStatusBar(){if(!statusItem)return;if(!cfg().get('enabled',true)){statusItem.text='$(mute) Claude Alerts';statusItem.tooltip='Claude Code Sound Alerts are disabled. Click to configure.';return;}statusItem.text='$(unmute) Claude Alerts';statusItem.tooltip=listenerMode==='owned'?'Claude Sound Alerts listener is active in this VS Code window. Click to configure.':listenerMode==='shared'?'Claude Sound Alerts listener is active and shared from another VS Code window. Click to configure.':listenerMode==='disabled'?'Claude Sound Alerts listener is disabled. Click to configure.':'Claude Sound Alerts listener is not currently active. Click to configure.';}
+function updateStatusBar(){if(!statusItem)return;if(!cfg().get('enabled',true)){statusItem.text='$(mute) Claude Alerts';statusItem.tooltip='Claude Code Sound Alerts are disabled. Click to configure.';return;}statusItem.text='$(unmute) Claude Alerts';statusItem.tooltip=listenerMode==='owned'?`Claude Sound Alerts listener is active on localhost:${listenerPort}. Click to configure.`:listenerMode==='disabled'?'Claude Sound Alerts listener is disabled. Click to configure.':'Claude Sound Alerts listener is not currently active. Click to configure.';}
 
 async function activate(context){
   extensionContext=context; output=vscode.window.createOutputChannel('Claude Code Sound Alerts'); context.subscriptions.push(output);
@@ -890,10 +990,11 @@ async function activate(context){
   context.subscriptions.push(vscode.commands.registerCommand('claudeSoundAlerts.setQuestionVolume',openControlPanel));
   context.subscriptions.push(vscode.commands.registerCommand('claudeSoundAlerts.setFinishedVolume',openControlPanel));
   context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(event=>{
-    if(event.affectsConfiguration('claudeSoundAlerts.enabled')||event.affectsConfiguration('claudeSoundAlerts.serverPort'))startServer();
+    if(event.affectsConfiguration('claudeSoundAlerts.enabled')||event.affectsConfiguration('claudeSoundAlerts.serverPort')||event.affectsConfiguration('claudeSoundAlerts.listenerPortCount'))void startServer();
     if(event.affectsConfiguration('claudeSoundAlerts')){void sendUiState();updateStatusBar();}
   }));
-  startServer(); log('Extension v1.4.1 activated. Multi-window listener sharing enabled. Open the Claude Alerts control panel from the status bar.');
+  context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(()=>{void writeListenerRegistration();}));
+  void startServer(); log('Extension v1.5.0 activated. Dynamic multi-listener routing enabled. Each VS Code window gets its own free localhost port.');
 }
 function deactivate(){stopServer();}
 module.exports={activate,deactivate};
