@@ -1,8 +1,8 @@
-# Claude Code Sound Alerts v1.5.0
+# Claude Code Sound Alerts v1.5.1
 
 A VS Code extension that plays configurable WAV alerts for Claude Code lifecycle events.
 
-## v1.4.1 highlights
+## v1.5.1 highlights
 
 - Redesigned the control panel with **Question** and **Finished** as prominent Primary Alerts at the top.
 - Only **Question** and **Finished** are enabled by default; every other event starts off.
@@ -22,8 +22,11 @@ A VS Code extension that plays configurable WAV alerts for Claude Code lifecycle
 - Built-in sounds: Question Chime, Done Fanfare, Error Impact, Soft Bell, Bright Ping, Double Ping, Gentle Chime, Digital Pop, Warm Knock, Success Chime, Calm Complete, Soft Pop, and Alert Pulse.
 - Windows playback uses `System.Media.SoundPlayer` with PCM WAV preprocessing for independent volume and digital boost.
 - Global mute, optional VS Code popups, repeat-gap control, hook status, and listener status.
-- Multi-window listener sharing: one VS Code window owns the localhost listener while other windows report **Listener active — shared**.
-- Automatic listener failover if the owner window closes.
+- True multi-listener mode: every VS Code window gets its own localhost listener.
+- If the preferred port is busy, the next free port is selected automatically.
+- Hook events are routed to one appropriate listener, preferring the VS Code workspace that contains Claude's current working directory.
+- The configured hook/router port automatically fails over to another open VS Code window if its owner closes.
+- Updated extension artwork to the newly supplied notification icon.
 
 ## Events
 
@@ -105,22 +108,16 @@ Every event can play its sound 1–5 times. The global **Repeat gap** controls t
 
 ## Listener status and multiple VS Code windows
 
-The extension uses one localhost listener on `127.0.0.1` for Claude Code hook events. Only one process can own that port at a time. v1.4.1 handles this automatically:
+Version 1.5 uses a real multi-listener design. Every VS Code window gets its own localhost listener. The configured `serverPort` is the starting port (47391 by default), and additional windows automatically use the next free port within `listenerPortCount` (20 by default).
 
-- **Listener active — this window** means the current VS Code window owns the listener.
-- **Listener active — shared** means another VS Code window owns it and this window has verified that the shared listener is healthy.
-- If the owner window closes, another open window automatically attempts to take ownership.
-- **Listener inactive** now means the listener really is unavailable, or the configured port is occupied by an unrelated application.
+Claude hooks point to one router listener. That router immediately forwards each event to one active listener, preferring the listener whose VS Code workspace contains Claude's `cwd`. This avoids duplicate sounds across windows while still allowing every window to own a separate listener.
 
-This avoids duplicate listeners and duplicate sounds while still supporting several VS Code/Claude sessions at once.
+If the router-owning VS Code window closes, another open window detects that the configured router port is free and automatically takes it over. If the starting port was already occupied when hooks are installed, the extension can use a later free port instead.
+
+The control panel shows the actual listener port for the current window. When that listener is also the configured hook router it is marked **router**.
+
+After upgrading from v1.4.x, click **Install / Update Hooks** once so Claude's hook URLs point to the active v1.5 router.
 
 ## Privacy
 
 Claude hooks send event JSON only to `127.0.0.1` on the configured local port. The extension does not intentionally transmit Claude event data to an external service.
-
-
-## Multi-window listeners
-
-Version 1.5 gives every VS Code window its own localhost listener. The configured `serverPort` is the starting port (47391 by default), and each additional window automatically selects the next available port within `listenerPortCount` (20 by default). Claude hooks use a local relay registry to route each event to one active listener, preferring the listener whose VS Code workspace contains Claude's current working directory. This prevents port conflicts without producing duplicate sounds in every window.
-
-After upgrading from an older release, open the control panel and click **Install / Update Hooks** once so Claude uses the dynamic relay.

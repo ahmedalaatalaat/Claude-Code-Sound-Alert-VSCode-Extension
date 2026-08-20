@@ -1,14 +1,21 @@
 # Changelog
 
+## 1.5.1
+
+- Fixed event switches whose **On / Off** text could remain stale after toggling.
+- Event cards now update their enabled/disabled visual state immediately when the switch changes.
+- Serialized control-panel setting writes to prevent rapid toggle changes from being saved out of order.
+- The server-confirmed UI state still refreshes after every change, so the panel remains consistent with VS Code settings.
+
 ## 1.5.0
 
 - Added true multi-listener mode: every VS Code window owns an independent localhost listener.
 - If the starting port is busy, the extension automatically tries the next port in the configured range.
-- Added a lightweight local relay registry so Claude hooks route each event to one appropriate active VS Code listener, preferring the listener whose workspace contains the hook `cwd`.
+- Added a lightweight local listener registry so the active hook router forwards each event to one appropriate VS Code listener, preferring the listener whose workspace contains the hook `cwd`.
 - Removed the single-port shared-owner limitation from v1.4.1.
 - Added automatic listener heartbeat/cleanup and failover to another active listener if a target disappears.
 - Updated the extension icon to the newly supplied notification image.
-- Claude hooks now use the local relay command for dynamic port discovery; run Install / Update Hooks once after upgrading.
+- Claude hooks keep fast HTTP delivery through an elected router listener; `SessionStart` and `Setup` continue to use the small compatibility command relay. Run Install / Update Hooks once after upgrading so the router URL is refreshed.
 
 ## 1.4.1
 

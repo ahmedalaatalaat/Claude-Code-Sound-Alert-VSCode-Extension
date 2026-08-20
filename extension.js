@@ -83,6 +83,7 @@ const listenerId = crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(
 let controlPanel;
 let statusItem;
 const lastPlayedAt = new Map();
+let controlMutationQueue = Promise.resolve();
 
 function cfg() { return vscode.workspace.getConfiguration('claudeSoundAlerts'); }
 function log(message) { output?.appendLine(`[${new Date().toLocaleTimeString()}] ${message}`); }
@@ -157,10 +158,11 @@ function pathMatchScore(cwd,root) {
   if(!cwd || !root) return 0;
   try {
     const c=path.resolve(cwd), r=path.resolve(root);
-    const relative=path.relative(r,c);
-    const inside=relative==='' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+    let inside;
+    if(process.platform==='win32') { const cl=c.toLowerCase(), rl=r.toLowerCase().replace(/[\\/]+$/,''); inside=cl===rl || cl.startsWith(rl+'\\') || cl.startsWith(rl+'/'); }
+    else { const relative=path.relative(r,c); inside=relative==='' || (!relative.startsWith('..') && !path.isAbsolute(relative)); }
     if(!inside) return 0;
-    return process.platform==='win32' ? r.toLowerCase().length : r.length;
+    return r.length;
   } catch(_) { return 0; }
 }
 async function rankedListenerRecords(body) {
@@ -534,7 +536,7 @@ async function startServer(preferredPort=null) {
       await tryListen(candidate,port);
       if(generation!==listenerGeneration){try{candidate.close();}catch(_){} return;}
       server=candidate; listenerPort=port; listenerMode='owned';
-      listenerDetail=offset===0 ? `Listening on port ${port}.` : `Port ${base} was busy; automatically switched to port ${port}.`;
+      listenerDetail=port===base ? `Listening on port ${port}.` : `Port ${base} was busy; automatically switched to port ${port}.`;
       server.on('error',error=>{log(`Listener runtime error on port ${port}: ${error.message||error}`);});
       log(`Listening for Claude Code hooks at ${endpointFor(port)} (listener ${listenerId.slice(0,8)}).`);
       await writeListenerRegistration(); startHeartbeat(); scheduleBrokerMonitor(5000); updateStatusBar(); void sendUiState(); return;
@@ -934,7 +936,7 @@ function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&l
 function soundOptions(selected){return(state.sounds||[]).map(s=>'<option value="'+esc(s.id)+'" '+(s.id===selected?'selected':'')+'>'+esc(s.label)+(s.builtIn?'':' (My Sound)')+'</option>').join('')}
 function renderLibrary(){const custom=(state.sounds||[]).filter(s=>!s.builtIn);$('customSounds').innerHTML=custom.length?custom.map(s=>'<span class="soundchip">'+esc(s.label)+' <button class="secondary removeSound" data-id="'+esc(s.id)+'" title="Remove" style="padding:1px 5px">×</button></span>').join(''):'<span class="note">No personal sounds added yet.</span>';document.querySelectorAll('.removeSound').forEach(b=>b.addEventListener('click',()=>post('removeSound',{id:b.dataset.id})))}
 function eventCard(e,primary){const s=e.setting||{};const locked=!!e.unavailable;const title=primary?(e.id==='askUserQuestion'?'Question':'Finished'):e.label;return '<section class="event '+(primary?'primary ':'')+(locked?'disabled-card ':'')+(!s.enabled?'off':'')+'" data-id="'+esc(e.id)+'" data-category="'+esc(e.category)+'" data-search="'+esc((e.label+' '+e.description+' '+e.hookEvent).toLowerCase())+'"><div class="head"><div><div class="event-title">'+esc(title)+'</div><div class="meta">'+(primary?'<span class="primary-badge">Primary</span>':'')+'<span class="badge">'+esc(e.hookEvent)+'</span><span class="badge">'+esc(e.category)+'</span></div></div><label class="switch"><input class="evtEnabled" type="checkbox" '+(s.enabled?'checked':'')+' '+(locked?'disabled':'')+'><span>'+(s.enabled?'On':'Off')+'</span></label></div><div class="hint">'+esc(e.description)+'</div>'+(locked?'<div class="safety">Not hooked: configuring WorktreeCreate would replace Claude Code’s normal worktree creation behavior.</div>':'<div class="controlgrid"><div class="field"><label>Sound</label><select class="evtSound">'+soundOptions(s.sound)+'</select></div><div class="field"><label>Volume <span class="boost">'+(s.volume>100?'BOOST':'')+'</span></label><div class="volline"><input class="evtVolume" type="range" min="0" max="200" value="'+s.volume+'"><span class="value">'+s.volume+'%</span></div></div><div class="field"><label>Repeat</label><select class="evtRepeat">'+[1,2,3,4,5].map(n=>'<option value="'+n+'" '+(n===s.repeat?'selected':'')+'>'+n+'×</option>').join('')+'</select></div></div><div class="eventactions"><button class="preview">Preview</button></div>')+'</section>'}
-function bindCards(){document.querySelectorAll('.event').forEach(card=>{const id=card.dataset.id;const en=card.querySelector('.evtEnabled'),sound=card.querySelector('.evtSound'),vol=card.querySelector('.evtVolume'),rep=card.querySelector('.evtRepeat'),preview=card.querySelector('.preview');if(en)en.addEventListener('change',e=>post('setEvent',{id,key:'enabled',value:e.target.checked}));if(sound)sound.addEventListener('change',e=>post('setEvent',{id,key:'sound',value:e.target.value}));if(vol){vol.addEventListener('input',e=>{card.querySelector('.value').textContent=e.target.value+'%';card.querySelector('.boost').textContent=Number(e.target.value)>100?'BOOST':''});vol.addEventListener('change',e=>post('setEvent',{id,key:'volume',value:Number(e.target.value)}))}if(rep)rep.addEventListener('change',e=>post('setEvent',{id,key:'repeat',value:Number(e.target.value)}));if(preview)preview.addEventListener('click',()=>post('preview',{id,volume:Number(vol.value),repeat:Number(rep.value),sound:sound.value}))})}
+function bindCards(){document.querySelectorAll('.event').forEach(card=>{const id=card.dataset.id;const en=card.querySelector('.evtEnabled'),sound=card.querySelector('.evtSound'),vol=card.querySelector('.evtVolume'),rep=card.querySelector('.evtRepeat'),preview=card.querySelector('.preview');if(en)en.addEventListener('change',e=>{const checked=!!e.target.checked;const label=e.target.closest('.switch')?.querySelector('span');if(label)label.textContent=checked?'On':'Off';card.classList.toggle('off',!checked);e.target.setAttribute('aria-checked',checked?'true':'false');post('setEvent',{id,key:'enabled',value:checked})});if(sound)sound.addEventListener('change',e=>post('setEvent',{id,key:'sound',value:e.target.value}));if(vol){vol.addEventListener('input',e=>{card.querySelector('.value').textContent=e.target.value+'%';card.querySelector('.boost').textContent=Number(e.target.value)>100?'BOOST':''});vol.addEventListener('change',e=>post('setEvent',{id,key:'volume',value:Number(e.target.value)}))}if(rep)rep.addEventListener('change',e=>post('setEvent',{id,key:'repeat',value:Number(e.target.value)}));if(preview)preview.addEventListener('click',()=>post('preview',{id,volume:Number(vol.value),repeat:Number(rep.value),sound:sound.value}))})}
 function applyFilter(){const q=$('search').value.trim().toLowerCase(),cat=$('category').value;document.querySelectorAll('#events .event').forEach(c=>{c.style.display=(!q||c.dataset.search.includes(q))&&(!cat||c.dataset.category===cat)?'':'none'})}
 function renderPreset(){document.querySelectorAll('[data-preset]').forEach(b=>b.classList.toggle('active',b.dataset.preset===state.activePreset));$('customPreset').classList.toggle('show',state.activePreset==='custom')}
 function render(){const hs=state.hooks||{};$('hookStatus').textContent=hs.complete?'✓ Hooks installed ('+hs.installed+'/'+hs.total+')':'⚠ Hooks incomplete ('+hs.installed+'/'+hs.total+')';$('hookStatus').className='pill '+(hs.complete?'ok':'warn');const lm=state.listenerMode||'inactive';$('listenerStatus').textContent=lm==='owned'?'● Listener '+state.listenerPort+(state.brokerPort===state.listenerPort?' — router':''):lm==='disabled'?'○ Listener disabled':'○ Listener inactive';$('listenerStatus').className='pill '+(state.listenerActive?'ok':'warn');$('listenerStatus').title=state.listenerDetail||'';$('enabled').checked=!!state.enabled;$('visual').checked=!!state.visualNotifications;$('gap').value=state.repeatGapMs;$('watchedFiles').value=(state.watchedFiles||[]).join(', ');const currentCat=$('category').value;$('category').innerHTML='<option value="">All categories</option>'+(state.categories||[]).map(c=>'<option value="'+esc(c)+'">'+esc(c)+'</option>').join('');if((state.categories||[]).includes(currentCat))$('category').value=currentCat;const primaryIds=new Set(['askUserQuestion','stop']);const primary=(state.events||[]).filter(e=>primaryIds.has(e.id)).sort((a,b)=>a.id==='askUserQuestion'?-1:1);const others=(state.events||[]).filter(e=>!primaryIds.has(e.id));$('primaryEvents').innerHTML=primary.map(e=>eventCard(e,true)).join('');$('events').innerHTML=others.map(e=>eventCard(e,false)).join('');renderLibrary();renderPreset();bindCards();applyFilter()}
@@ -948,7 +950,7 @@ async function openControlPanel(){
   controlPanel.webview.html=controlPanelHtml(controlPanel.webview,await getUiState()); controlPanel.onDidDispose(()=>{controlPanel=undefined;},null,extensionContext.subscriptions);
   controlPanel.webview.onDidReceiveMessage(async msg=>{
     try{
-      if(msg.action==='setEvent'){await updateEventSetting(msg.id,msg.key,msg.value);await sendUiState();return;}
+      if(msg.action==='setEvent'){controlMutationQueue=controlMutationQueue.then(async()=>{await updateEventSetting(msg.id,msg.key,msg.value);await sendUiState();}).catch(error=>{log(`Event setting update failed: ${error.stack||error}`);controlPanel?.webview.postMessage({type:'toast',text:`Could not save alert setting: ${error.message||error}`});});await controlMutationQueue;return;}
       if(msg.action==='preview'){await playProfile(msg.id,'Control panel preview',true,{sound:msg.sound,volume:msg.volume,repeat:msg.repeat});controlPanel?.webview.postMessage({type:'toast',text:'Preview played.'});return;}
       if(msg.action==='setGlobal'){
         const allowed=new Set(['enabled','showVisualNotifications','repeatGapMs']); if(!allowed.has(msg.key))return;
@@ -994,7 +996,7 @@ async function activate(context){
     if(event.affectsConfiguration('claudeSoundAlerts')){void sendUiState();updateStatusBar();}
   }));
   context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(()=>{void writeListenerRegistration();}));
-  void startServer(); log('Extension v1.5.0 activated. Dynamic multi-listener routing enabled. Each VS Code window gets its own free localhost port.');
+  void startServer(); log('Extension v1.5.1 activated. Dynamic multi-listener routing enabled. Each VS Code window gets its own free localhost port.');
 }
 function deactivate(){stopServer();}
 module.exports={activate,deactivate};

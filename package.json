@@ -2,7 +2,7 @@
   "name": "claude-code-sound-alerts",
   "displayName": "Claude Code Sound Alerts",
   "description": "Customizable Claude Code sound alerts with dynamic multi-window listeners, Question/Finished primary alerts, presets, volume boost, repeats, and per-event controls.",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "publisher": "local",
   "license": "MIT",
   "engines": {
