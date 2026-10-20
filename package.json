@@ -2,7 +2,7 @@
   "name": "claude-code-sound-alerts",
   "displayName": "Claude Code Sound Alerts",
   "description": "Background-aware Claude Code sound alerts with verified final completion, agent/background states, multi-window routing, per-event sounds, volume boost, repeats, and presets.",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "publisher": "local",
   "license": "MIT",
   "engines": {
@@ -112,11 +112,70 @@
           "description": "Also show a VS Code information notification when an alert fires.",
           "scope": "application"
         },
+        "claudeSoundAlerts.completionVerificationMode": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "strict",
+            "legacy"
+          ],
+          "enumDescriptions": [
+            "Recommended: use authoritative task data when available and compatibility mode until a session proves it supports the registry.",
+            "Require completion-registry evidence; unverified Stop events never become Finished.",
+            "Compatibility mode: a Stop can become a Finished candidate even without registry data."
+          ],
+          "default": "auto",
+          "description": "How Main Work Finished behaves when Claude omits background-task registry fields.",
+          "scope": "application"
+        },
+        "claudeSoundAlerts.finishedGraceMs": {
+          "type": "number",
+          "default": 2000,
+          "minimum": 0,
+          "maximum": 15000,
+          "description": "Delay a Finished candidate before playing it. Any immediate Claude self-resume activity in the same session cancels the candidate.",
+          "scope": "application"
+        },
+        "claudeSoundAlerts.textHeuristicDowngrade": {
+          "type": "boolean",
+          "default": true,
+          "description": "Downgrade a Finished candidate to Background / Waiting when Claude explicitly says work is still running or waiting. This rule can only suppress Finished; it can never create one.",
+          "scope": "application"
+        },
+        "claudeSoundAlerts.backgroundAlertMode": {
+          "type": "string",
+          "enum": [
+            "transition",
+            "changes",
+            "everyStop"
+          ],
+          "default": "transition",
+          "description": "When to play Background / Waiting: only when entering waiting, when the blocking task set changes, or on every pending Stop.",
+          "scope": "application"
+        },
+        "claudeSoundAlerts.ignoredBackgroundTaskTypes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "monitor_ws"
+          ],
+          "description": "Background task types treated as ambient/non-blocking for final-completion detection. Terminal-status entries are always ignored. Add teammate only if you explicitly want idle/running teammates not to block Finished.",
+          "scope": "application"
+        },
+        "claudeSoundAlerts.recurringCronsCountAsPending": {
+          "type": "boolean",
+          "default": false,
+          "description": "When enabled, recurring session crons such as /loop prevent Main Work Finished. Off by default so recurring automation does not block Finished forever.",
+          "scope": "application"
+        },
         "claudeSoundAlerts.strictCompletionVerification": {
           "type": "boolean",
           "default": true,
-          "description": "Only play Main Work Finished when Claude Stop payloads explicitly confirm there are no background tasks and no session-scoped scheduled wakeups. If verification data is unavailable, use Completion Unverified instead of Finished.",
-          "scope": "application"
+          "description": "Legacy v1.7.0 completion-verification setting retained for migration compatibility.",
+          "scope": "application",
+          "deprecationMessage": "Deprecated in v1.7.1. Use Claude Sound Alerts: Completion Verification Mode instead."
         },
         "claudeSoundAlerts.eventSettings": {
           "type": "object",
@@ -157,7 +216,7 @@
   "scripts": {
     "check": "node --check extension.js",
     "lint": "eslint extension.js",
-    "test": "node test/smoke.js && node test/review2.js && node test/review3.js && node test/v170.js"
+    "test": "node test/smoke.js && node test/review2.js && node test/review3.js && node test/v170.js && node test/v171.js"
   },
   "devDependencies": {
     "@types/vscode": "^1.90.0",

@@ -36,10 +36,10 @@ const PRESET_IDS = new Set(SOUND_PRESETS.map(s => s.id));
 const EVENT_DEFS = [
   { id:'askUserQuestion', hookEvent:'PreToolUse', virtual:true, category:'Attention', label:'Ask User Question', description:'Claude calls AskUserQuestion and waits for your answer.', defaultEnabled:true, sound:'question-chime', volume:75, repeat:2 },
   { id:'exitPlanMode', hookEvent:'PreToolUse', virtual:true, category:'Attention', label:'Plan Approval', description:'Claude asks to leave plan mode / approve the plan.', defaultEnabled:false, sound:'bright-ping', volume:75, repeat:2 },
-  { id:'backgroundPending', hookEvent:'Stop', virtual:true, category:'Turn', label:'Background Work / Waiting', description:'The main Claude turn paused, but background tasks, agents, workflows, monitors, MCP work, or scheduled wakeups are still active.', defaultEnabled:false, sound:'calm-complete', volume:35, repeat:1 },
+  { id:'backgroundPending', hookEvent:'Stop', virtual:true, category:'Turn', label:'Background Work / Waiting', description:'The main Claude turn paused, but blocking background work or a one-shot scheduled wakeup is still active. Ambient/ignored task types and recurring crons can be excluded.', defaultEnabled:false, sound:'calm-complete', volume:35, repeat:1 },
   { id:'stopUnverified', hookEvent:'Stop', virtual:true, category:'Turn', label:'Completion Unverified', description:'Claude stopped, but the current payload did not include enough task-registry data to prove that all background work is finished.', defaultEnabled:false, sound:'soft-bell', volume:30, repeat:1 },
   { id:'sessionStart', hookEvent:'SessionStart', category:'Session', label:'Session Started', description:'A Claude Code session starts or resumes.', defaultEnabled:false, sound:'gentle-chime', volume:35, repeat:1, transport:'command' },
-  { id:'setup', hookEvent:'Setup', category:'Session', label:'Setup', description:'Claude Code setup/init/maintenance hook fires.', defaultEnabled:false, sound:'digital-pop', volume:30, repeat:1, transport:'command' },
+  { id:'setup', hookEvent:'Setup', category:'Session', label:'Setup', description:'CLI-only setup/init/maintenance hook. It does not normally fire in the VS Code panel.', defaultEnabled:false, sound:'digital-pop', volume:30, repeat:1, transport:'command' },
   { id:'instructionsLoaded', hookEvent:'InstructionsLoaded', category:'Context', label:'Instructions Loaded', description:'CLAUDE.md or rule instructions are loaded.', defaultEnabled:false, sound:'soft-pop', volume:25, repeat:1 },
   { id:'userPromptSubmit', hookEvent:'UserPromptSubmit', category:'Turn', label:'Prompt Submitted', description:'Your prompt is submitted to Claude.', defaultEnabled:false, sound:'soft-pop', volume:25, repeat:1 },
   { id:'userPromptExpansion', hookEvent:'UserPromptExpansion', category:'Turn', label:'Prompt Expansion', description:'A command/skill expands into a prompt.', defaultEnabled:false, sound:'digital-pop', volume:25, repeat:1 },
@@ -53,16 +53,16 @@ const EVENT_DEFS = [
   { id:'notificationPermissionPrompt', hookEvent:'Notification', virtual:true, matcher:'permission_prompt', category:'Attention', label:'Permission Reminder', description:'A permission prompt has been waiting and Claude sends a notification reminder.', defaultEnabled:false, sound:'bright-ping', volume:70, repeat:2 },
   { id:'notificationIdlePrompt', hookEvent:'Notification', virtual:true, matcher:'idle_prompt', category:'Attention', label:'Idle Reminder', description:'Claude sends an idle reminder after a completed response. Suppressed if this extension still knows background work is pending.', defaultEnabled:false, sound:'soft-bell', volume:35, repeat:1 },
   { id:'notificationAgentNeedsInput', hookEvent:'Notification', virtual:true, matcher:'agent_needs_input', category:'Agents', label:'Background Agent Needs Input', description:'A background session or teammate is waiting for your input.', defaultEnabled:false, sound:'question-chime', volume:80, repeat:2 },
-  { id:'notificationAgentCompleted', hookEvent:'Notification', virtual:true, matcher:'agent_completed', category:'Agents', label:'Background Session Completed', description:'Claude Code reports a background session finished or failed. This is separate from main-work completion.', defaultEnabled:false, sound:'finished', volume:45, repeat:1 },
-  { id:'notificationQuotaResumed', hookEvent:'Notification', virtual:true, matcher:'quota_auto_resume_fired', category:'Session', label:'Quota Auto-Resume', description:'Claude automatically resumed work after usage became available again.', defaultEnabled:false, sound:'gentle-chime', volume:35, repeat:1 },
-  { id:'notificationQuotaStale', hookEvent:'Notification', virtual:true, matcher:'quota_auto_resume_stale', category:'Attention', label:'Quota Resume Needs You', description:'The quota reset happened after a long sleep and Claude is waiting for you to continue.', defaultEnabled:false, sound:'bright-ping', volume:65, repeat:2 },
-  { id:'notificationQuotaDisabled', hookEvent:'Notification', virtual:true, matcher:'quota_auto_resume_disabled', category:'Errors', label:'Quota Auto-Resume Stopped', description:'Claude ended its usage-limit wait without continuing automatically.', defaultEnabled:false, sound:'error-impact', volume:70, repeat:1 },
+  { id:'notificationAgentCompleted', hookEvent:'Notification', virtual:true, matcher:'agent_completed', category:'Agents', label:'Background Session Completed', description:'Terminal Agent View reports a background session finished or failed. Claude currently fires this only while Agent View is open; it is separate from main-work completion.', defaultEnabled:false, sound:'finished', volume:45, repeat:1 },
+  { id:'notificationQuotaResumed', hookEvent:'Notification', virtual:true, matcher:'quota_auto_resume_fired', category:'Session', label:'Quota Auto-Resume', description:'Claude automatically resumed work after usage became available again. Requires Claude Code 2.1.234 or later.', defaultEnabled:false, sound:'gentle-chime', volume:35, repeat:1 },
+  { id:'notificationQuotaStale', hookEvent:'Notification', virtual:true, matcher:'quota_auto_resume_stale', category:'Attention', label:'Quota Resume Needs You', description:'The quota reset happened after a long sleep and Claude is waiting for you to continue. Requires Claude Code 2.1.234 or later.', defaultEnabled:false, sound:'bright-ping', volume:65, repeat:2 },
+  { id:'notificationQuotaDisabled', hookEvent:'Notification', virtual:true, matcher:'quota_auto_resume_disabled', category:'Errors', label:'Quota Auto-Resume Stopped', description:'Claude ended its usage-limit wait without continuing automatically. Requires Claude Code 2.1.234 or later.', defaultEnabled:false, sound:'error-impact', volume:70, repeat:1 },
   { id:'notification', hookEvent:'Notification', category:'Attention', label:'Other Claude Notification', description:'Catch-all for Claude notifications not handled by a more specific notification alert.', defaultEnabled:false, sound:'soft-bell', volume:55, repeat:1 },
   { id:'subagentStart', hookEvent:'SubagentStart', category:'Agents', label:'Subagent Started', description:'A Claude subagent is spawned.', defaultEnabled:false, sound:'digital-pop', volume:25, repeat:1 },
   { id:'subagentStop', hookEvent:'SubagentStop', category:'Agents', label:'Agent Finished', description:'One Claude subagent finished. This never counts as the main Claude work being finished.', defaultEnabled:false, sound:'finished', volume:45, repeat:1 },
   { id:'taskCreated', hookEvent:'TaskCreated', category:'Tasks', label:'Task Created', description:'Claude creates a task.', defaultEnabled:false, sound:'soft-pop', volume:25, repeat:1 },
   { id:'taskCompleted', hookEvent:'TaskCompleted', category:'Tasks', label:'Task Completed', description:'Claude marks one task as completed. This does not mean the overall turn is finished.', defaultEnabled:false, sound:'success-chime', volume:45, repeat:1 },
-  { id:'stop', hookEvent:'Stop', category:'Turn', label:'Main Work Finished', description:'Plays only when Claude stops and reports no active background tasks and no session-scoped scheduled wakeups.', defaultEnabled:true, sound:'done-fanfare', volume:55, repeat:1 },
+  { id:'stop', hookEvent:'Stop', category:'Turn', label:'Main Work Finished', description:'Plays only after the completion grace window when Claude appears fully done: no blocking background work, no one-shot wakeups, no immediate self-resume, and no waiting-language downgrade.', defaultEnabled:true, sound:'done-fanfare', volume:55, repeat:1 },
   { id:'stopFailure', hookEvent:'StopFailure', category:'Errors', label:'Claude API / Turn Error', description:'The turn ends due to an API/model/auth/rate-limit error.', defaultEnabled:false, sound:'error-impact', volume:100, repeat:3 },
   { id:'teammateIdle', hookEvent:'TeammateIdle', category:'Agents', label:'Teammate Idle', description:'An agent-team teammate is about to go idle.', defaultEnabled:false, sound:'soft-bell', volume:45, repeat:1 },
   { id:'configChange', hookEvent:'ConfigChange', category:'System', label:'Claude Config Changed', description:'Claude settings/policy/skills configuration changes.', defaultEnabled:false, sound:'digital-pop', volume:30, repeat:1 },
@@ -114,6 +114,23 @@ const listenerProbeCache = new Map();
 const LISTENER_PROBE_CACHE_MS = 3000;
 const sessionStates = new Map();
 const SESSION_STATE_TTL_MS = 6 * 60 * 60 * 1000;
+const pendingFinished = new Map();
+const sessionRoutePins = new Map();
+const routedEventSeen = new Map();
+const ROUTE_PIN_TTL_MS = 6 * 60 * 60 * 1000;
+const ROUTED_EVENT_TTL_MS = 60 * 1000;
+let lastStopDiagnostic = null;
+const PENDING_TASK_STATUSES = new Set(['running','pending']);
+const TERMINAL_TASK_STATUSES = new Set(['completed','failed','killed','stopped','cancelled','canceled','done']);
+const WAITING_TEXT_PATTERNS = [
+  /\bstill\s+(?:running|in progress|working|pending)\b/i,
+  /\bwaiting\s+(?:only\s+)?(?:on|for)\b/i,
+  /\bwill\s+(?:report|notify|let you know|update you)\b[\s\S]{0,120}\b(?:finish|complete|done|ready)\b/i,
+  /\bwhen\s+(?:it|they|the\s+(?:run|job|task|agent|agents|tests?|suite))\s+(?:finish|finishes|complete|completes|is done|are done)\b/i,
+  /\bbackground\s+(?:run|job|task|agent|agents|process|processes)\b[\s\S]{0,80}\b(?:running|in progress|pending)\b/i,
+  /\b(?:run|job|task|agent|agents|tests?|suite)\b[\s\S]{0,80}\b(?:finishes?|completes?)\s+in\s+(?:about|roughly|approximately|~)?\s*\d+\s*(?:sec(?:ond)?s?|min(?:ute)?s?|hours?)\b/i,
+  /\bin\s+(?:about|roughly|approximately|~)?\s*\d+\s*(?:sec(?:ond)?s?|min(?:ute)?s?|hours?)\b[\s\S]{0,100}\b(?:finish|complete|results?|numbers?|report)\b/i
+];
 
 function cfg() { return vscode.workspace.getConfiguration('claudeSoundAlerts'); }
 function log(message) { output?.appendLine(`[${new Date().toLocaleTimeString()}] ${message}`); }
@@ -226,18 +243,40 @@ function pathMatchScore(cwd,root) {
     return r.length;
   } catch(_) { return 0; }
 }
+function pruneRoutePins(now=Date.now()) {
+  for(const [key,pin] of sessionRoutePins) if(now-Number(pin?.at||0)>ROUTE_PIN_TTL_MS) sessionRoutePins.delete(key);
+  for(const [key,at] of routedEventSeen) if(now-Number(at||0)>ROUTED_EVENT_TTL_MS) routedEventSeen.delete(key);
+}
 async function rankedListenerRecords(body) {
   const cwd=typeof body?.cwd==='string'?body.cwd:'';
   const records=await activeListenerRecords();
-  return records.map(d=>{
+  pruneRoutePins();
+  const sid=sessionKey(body),pin=sid?sessionRoutePins.get(sid):null;
+  const ranked=records.map(d=>{
     let score=0; for(const root of (Array.isArray(d.workspaceRoots)?d.workspaceRoots:[])) score=Math.max(score,pathMatchScore(cwd,root));
-    return {d,score,heartbeat:Number(d.heartbeatAt)||0};
-  }).sort((a,b)=>b.score-a.score || b.heartbeat-a.heartbeat).map(x=>x.d);
+    return {d,score,heartbeat:Number(d.heartbeatAt)||0,pinned:!!pin&&d.id===pin.listenerId};
+  }).sort((a,b)=>Number(b.pinned)-Number(a.pinned)||b.score-a.score||b.heartbeat-a.heartbeat).map(x=>x.d);
+  if(pin && !ranked.some(d=>d.id===pin.listenerId)) sessionRoutePins.delete(sid);
+  return ranked;
+}
+function pinSessionRoute(body,record){
+  const sid=sessionKey(body);if(!sid||!record?.id)return;
+  if(body?.hook_event_name==='SessionEnd'){sessionRoutePins.delete(sid);return;}
+  sessionRoutePins.set(sid,{listenerId:record.id,at:Date.now()});
+}
+function forwardedEventId(body){
+  return typeof body?._claude_sound_alerts_event_id==='string'&&body._claude_sound_alerts_event_id?body._claude_sound_alerts_event_id:null;
+}
+function markRoutedEventSeen(body){
+  const id=forwardedEventId(body);if(!id)return false;
+  const now=Date.now(),seen=routedEventSeen.has(id);routedEventSeen.set(id,now);pruneRoutePins(now);return seen;
 }
 function forwardHook(port,body,token=listenerToken) {
   return new Promise(resolve=>{
-    const raw=JSON.stringify(body||{});
-    const req=http.request({host:'127.0.0.1',port,path:`/${EXTENSION_TAG}/hook/${token}`,method:'POST',timeout:1000,agent:false,headers:{Host:`127.0.0.1:${port}`,'Content-Type':'application/json','Content-Length':Buffer.byteLength(raw),'X-Claude-Sound-Alerts-Routed':'1',Connection:'close'}},res=>{res.resume();res.on('end',()=>resolve(res.statusCode===204));});
+    const forwarded={...(body||{})};
+    if(!forwarded._claude_sound_alerts_event_id)forwarded._claude_sound_alerts_event_id=crypto.randomBytes(10).toString('hex');
+    const raw=JSON.stringify(forwarded);
+    const req=http.request({host:'127.0.0.1',port,path:`/${EXTENSION_TAG}/hook/${token}`,method:'POST',timeout:1500,agent:false,headers:{Host:`127.0.0.1:${port}`,'Content-Type':'application/json','Content-Length':Buffer.byteLength(raw),'X-Claude-Sound-Alerts-Routed':'1',Connection:'close'}},res=>{res.resume();res.on('end',()=>resolve(res.statusCode===204));});
     req.on('timeout',()=>{req.destroy();resolve(false);}); req.on('error',()=>resolve(false)); req.write(raw); req.end();
   });
 }
@@ -246,14 +285,17 @@ async function routeIncomingHook(body) {
   for(const d of candidates) {
     const port=Number(d.port);
     if(port===listenerPort) {
-      if(body?.hook_event_name==='Stop'){const st=stopCompletionState(body);log(`Stop classified as ${st.kind.toUpperCase()}: ${st.backgroundTasks.length} background task(s), ${st.sessionCrons.length} scheduled wakeup(s).`);} const result=classifyHook(body); if(result) void playProfile(result.id,result.reason); else log(`Ignored/disabled hook event: ${body.hook_event_name||'unknown'}${body.tool_name?` / ${body.tool_name}`:''}${body.notification_type?` / ${body.notification_type}`:''}`);
+      pinSessionRoute(body,d);
+      void handleHookLocally(body);
       return true;
     }
-    if(await forwardHook(port,body,d.token||listenerToken)) return true;
+    if(await forwardHook(port,body,d.token||listenerToken)){pinSessionRoute(body,d);return true;}
+    const sid=sessionKey(body),pin=sid?sessionRoutePins.get(sid):null;if(pin?.listenerId===d.id)sessionRoutePins.delete(sid);
   }
-  // Registry may not be ready during startup; fall back to this listener.
   if(listenerIsActive()) {
-    if(body?.hook_event_name==='Stop'){const st=stopCompletionState(body);log(`Stop classified as ${st.kind.toUpperCase()}: ${st.backgroundTasks.length} background task(s), ${st.sessionCrons.length} scheduled wakeup(s).`);} const result=classifyHook(body); if(result) void playProfile(result.id,result.reason); return true;
+    pinSessionRoute(body,{id:listenerId});
+    void handleHookLocally(body);
+    return true;
   }
   return false;
 }
@@ -538,6 +580,7 @@ function enqueuePlayback(task,label){
 
 function brief(value,max=80){if(value===undefined||value===null)return'';let text;try{text=typeof value==='string'?value:JSON.stringify(value);}catch(_error){text=String(value);}text=String(text).replace(/\s+/g,' ').trim();return text.length>max?text.slice(0,max-1)+'…':text;}
 function sessionKey(body){const id=typeof body?.session_id==='string'?body.session_id.trim():'';return id||null;}
+function completionKey(body){return sessionKey(body)||(typeof body?.transcript_path==='string'&&body.transcript_path?`transcript:${body.transcript_path}`:typeof body?.cwd==='string'&&body.cwd?`cwd:${body.cwd}`:'_nosession');}
 function pruneSessionStates(now=Date.now()){
   for(const [key,state] of sessionStates) if(now-(state.updatedAt||0)>SESSION_STATE_TTL_MS) sessionStates.delete(key);
   if(sessionStates.size>200){const oldest=[...sessionStates.entries()].sort((a,b)=>(a[1].updatedAt||0)-(b[1].updatedAt||0)).slice(0,sessionStates.size-200);for(const [key] of oldest)sessionStates.delete(key);}
@@ -545,158 +588,146 @@ function pruneSessionStates(now=Date.now()){
 function getSessionState(body,create=true){
   const key=sessionKey(body);if(!key)return null;
   let state=sessionStates.get(key);
-  if(!state&&create){state={sessionId:key,promptId:null,status:'unknown',backgroundTasks:[],sessionCrons:[],activeAgents:new Map(),updatedAt:Date.now()};sessionStates.set(key,state);}
+  if(!state&&create){state={sessionId:key,promptId:null,status:'unknown',backgroundTasks:[],sessionCrons:[],activeAgents:new Map(),idleAgentIds:new Set(),idleAgentNames:new Set(),seenAuthoritativeStop:false,blockingSignature:'',lastStopKind:'unknown',updatedAt:Date.now()};sessionStates.set(key,state);}
   return state||null;
 }
-function stopCompletionState(body){
-  const hasBackground=Array.isArray(body?.background_tasks),hasCrons=Array.isArray(body?.session_crons);
-  const backgroundTasks=hasBackground?body.background_tasks.filter(Boolean):[];
-  const sessionCrons=hasCrons?body.session_crons.filter(Boolean):[];
-  if(hasBackground&&hasCrons){
-    if(backgroundTasks.length||sessionCrons.length)return{kind:'background',verified:true,backgroundTasks,sessionCrons};
-    return{kind:'finished',verified:true,backgroundTasks,sessionCrons};
-  }
-  return{kind:'unverified',verified:false,backgroundTasks,sessionCrons};
+function completionVerificationMode(options={}){
+  if(options.completionVerificationMode)return String(options.completionVerificationMode);
+  if(options.strictCompletionVerification!==undefined)return options.strictCompletionVerification?'strict':'legacy';
+  const configured=String(cfg().get('completionVerificationMode','auto')||'auto');
+  return ['auto','strict','legacy'].includes(configured)?configured:'auto';
 }
-function pendingWorkReason(body){
-  const st=stopCompletionState(body),parts=[];
-  if(st.backgroundTasks.length){
-    const labels=st.backgroundTasks.slice(0,3).map(t=>brief(t?.agent_type||t?.type||t?.description||'task',32)).filter(Boolean);
-    parts.push(`${st.backgroundTasks.length} background task${st.backgroundTasks.length===1?'':'s'}${labels.length?` (${labels.join(', ')}${st.backgroundTasks.length>labels.length?', …':''})`:''}`);
+function ignoredBackgroundTaskTypes(options={}){
+  const raw=options.ignoredBackgroundTaskTypes!==undefined?options.ignoredBackgroundTaskTypes:cfg().get('ignoredBackgroundTaskTypes',['monitor_ws']);
+  return new Set((Array.isArray(raw)?raw:[]).map(v=>String(v).trim().toLowerCase()).filter(Boolean));
+}
+function taskType(task){return String(task?.type||'unknown').trim().toLowerCase();}
+function taskStatus(task){return String(task?.status||'').trim().toLowerCase();}
+function knownAmbientTask(entry){
+  const type=taskType(entry);if(type==='monitor_ws')return true;
+  if(type!=='monitor')return false;
+  const text=[entry?.description,entry?.name,entry?.server,entry?.tool].map(v=>String(v||'')).join(' ').toLowerCase();
+  return /artifact|live[ -]?update|monitor_ws|workspace\s+watch/.test(text);
+}
+function blockingTasks(list,options={}){
+  const ignored=ignoredBackgroundTaskTypes(options),out=[],state=options.state||null;
+  for(const entry of (Array.isArray(list)?list:[])){
+    if(!entry)continue;
+    if(typeof entry!=='object'){out.push({id:'unknown',type:'unknown',status:'unknown',description:brief(entry,120)});continue;}
+    const status=taskStatus(entry),type=taskType(entry);
+    if(status&&TERMINAL_TASK_STATUSES.has(status))continue;
+    if(status&&!PENDING_TASK_STATUSES.has(status)){out.push(entry);continue;}
+    if(entry.ambient===true||entry.skip_transcript===true||entry.skipTranscript===true||knownAmbientTask(entry))continue;
+    if(type==='teammate'&&state){
+      const id=String(entry.id||'');const names=[entry.name,entry.agent_type,entry.description].map(v=>String(v||'').trim().toLowerCase()).filter(Boolean);
+      if((id&&state.idleAgentIds?.has(id))||names.some(n=>state.idleAgentNames?.has(n)))continue;
+    }
+    if(ignored.has(type))continue;
+    out.push(entry);
   }
-  if(st.sessionCrons.length)parts.push(`${st.sessionCrons.length} scheduled wakeup${st.sessionCrons.length===1?'':'s'}`);
+  return out;
+}
+function blockingCrons(list,options={}){
+  const recurringPending=options.recurringCronsCountAsPending===undefined?cfg().get('recurringCronsCountAsPending',false):!!options.recurringCronsCountAsPending;
+  return (Array.isArray(list)?list:[]).filter(entry=>entry&&typeof entry==='object').filter(entry=>entry.recurring===true?recurringPending:true);
+}
+function blockingSignature(tasks,crons,extra=''){
+  const taskIds=tasks.map(t=>String(t?.id||`${t?.type||'task'}:${t?.description||''}`)).sort();
+  const cronIds=crons.map(c=>String(c?.id||`${c?.schedule||'cron'}:${c?.prompt||''}`)).sort();
+  return crypto.createHash('sha1').update(JSON.stringify([taskIds,cronIds,extra])).digest('hex').slice(0,16);
+}
+function waitingTextMatch(body,options={}){
+  const enabled=options.textHeuristicDowngrade===undefined?cfg().get('textHeuristicDowngrade',true):!!options.textHeuristicDowngrade;
+  if(!enabled)return null;
+  const text=String(body?.last_assistant_message||'').slice(-2500);
+  if(!text)return null;
+  for(const re of WAITING_TEXT_PATTERNS){const match=text.match(re);if(match)return brief(match[0],120);}
+  return null;
+}
+function stopCompletionState(body,options={}){
+  const state=options.state||null;
+  const hasBackground=Array.isArray(body?.background_tasks),hasCrons=Array.isArray(body?.session_crons);
+  const rawBackground=hasBackground?body.background_tasks.filter(Boolean):[];
+  const rawCrons=hasCrons?body.session_crons.filter(Boolean):[];
+  const backgroundTasks=blockingTasks(rawBackground,{...options,state}),sessionCrons=blockingCrons(rawCrons,options);
+  const ignoredTaskCount=Math.max(0,rawBackground.length-backgroundTasks.length),ignoredCronCount=Math.max(0,rawCrons.length-sessionCrons.length);
+  const fullyAuthoritative=hasBackground&&hasCrons;
+  if(backgroundTasks.length||sessionCrons.length)return{kind:'background',verified:fullyAuthoritative,backgroundTasks,sessionCrons,rawBackgroundTasks:rawBackground,rawSessionCrons:rawCrons,ignoredTaskCount,ignoredCronCount,blockingSignature:blockingSignature(backgroundTasks,sessionCrons),reason:'registry'};
+  const textMatch=waitingTextMatch(body,options);
+  if(textMatch)return{kind:'background',verified:fullyAuthoritative,backgroundTasks,sessionCrons,rawBackgroundTasks:rawBackground,rawSessionCrons:rawCrons,ignoredTaskCount,ignoredCronCount,blockingSignature:blockingSignature([],[],'waiting-text'),reason:'text',textMatch};
+  if(fullyAuthoritative)return{kind:'finished',verified:true,compatibility:false,backgroundTasks,sessionCrons,rawBackgroundTasks:rawBackground,rawSessionCrons:rawCrons,ignoredTaskCount,ignoredCronCount,blockingSignature:'',reason:'registry'};
+  const mode=completionVerificationMode(options),seenAuthoritative=!!state?.seenAuthoritativeStop;
+  if(mode==='strict'||(mode==='auto'&&seenAuthoritative))return{kind:'unverified',verified:false,compatibility:false,backgroundTasks,sessionCrons,rawBackgroundTasks:rawBackground,rawSessionCrons:rawCrons,ignoredTaskCount,ignoredCronCount,blockingSignature:'',reason:'missing-registry'};
+  return{kind:'finished',verified:false,compatibility:true,backgroundTasks,sessionCrons,rawBackgroundTasks:rawBackground,rawSessionCrons:rawCrons,ignoredTaskCount,ignoredCronCount,blockingSignature:'',reason:'compatibility'};
+}
+function pendingWorkReason(body,completion=null){
+  const st=completion||stopCompletionState(body,{state:getSessionState(body,false)}),parts=[];
+  if(st.reason==='text'&&st.textMatch)return `Claude says work is still pending — “${st.textMatch}”`;
+  if(st.backgroundTasks.length){const labels=st.backgroundTasks.slice(0,3).map(t=>brief(t?.agent_type||t?.type||t?.description||'task',32)).filter(Boolean);parts.push(`${st.backgroundTasks.length} blocking background task${st.backgroundTasks.length===1?'':'s'}${labels.length?` (${labels.join(', ')}${st.backgroundTasks.length>labels.length?', …':''})`:''}`);}
+  if(st.sessionCrons.length)parts.push(`${st.sessionCrons.length} one-shot/scheduled wakeup${st.sessionCrons.length===1?'':'s'}`);
   return parts.length?`Background work continues — ${parts.join(' and ')}`:'Background work continues';
 }
-function updateSessionState(body){
+function updateSessionState(body,completion=null){
   const event=body?.hook_event_name,state=getSessionState(body,true);if(!state)return null;
   state.updatedAt=Date.now();if(typeof body?.prompt_id==='string'&&body.prompt_id)state.promptId=body.prompt_id;
-  if(event==='SessionStart'){state.status='active';}
-  else if(event==='UserPromptSubmit'){state.status='working';}
-  else if(event==='SubagentStart'&&body.agent_id){state.activeAgents.set(String(body.agent_id),{agentType:brief(body.agent_type,80),startedAt:Date.now()});}
-  else if(event==='SubagentStop'){
-    if(body.agent_id)state.activeAgents.delete(String(body.agent_id));
-    if(Array.isArray(body.background_tasks))state.backgroundTasks=body.background_tasks.filter(Boolean);
-    if(Array.isArray(body.session_crons))state.sessionCrons=body.session_crons.filter(Boolean);
-  } else if(event==='Stop'){
-    const status=stopCompletionState(body);state.backgroundTasks=status.backgroundTasks;state.sessionCrons=status.sessionCrons;state.status=status.kind==='finished'?'finished':status.kind==='background'?'waiting_background':'completion_unverified';
-  } else if(event==='StopFailure'){state.status='failed';}
-  else if(event==='Notification'&&body.notification_type==='agent_needs_input'){state.status='waiting_user';}
+  if(body?.agent_id&&event!=='TeammateIdle')state.idleAgentIds.delete(String(body.agent_id));
+  if(event==='SessionStart')state.status='active';
+  else if(event==='UserPromptSubmit')state.status='working';
+  else if(event==='SubagentStart'){if(body.agent_id)state.activeAgents.set(String(body.agent_id),{agentType:brief(body.agent_type,80),startedAt:Date.now()});const agentName=String(body.agent_type||'').trim().toLowerCase();if(agentName)state.idleAgentNames.delete(agentName);}
+  else if(event==='SubagentStop'){if(body.agent_id)state.activeAgents.delete(String(body.agent_id));}
+  else if(event==='TeammateIdle'){if(body.agent_id)state.idleAgentIds.add(String(body.agent_id));const teammateName=String(body.teammate_name||body.agent_type||'').trim().toLowerCase();if(teammateName)state.idleAgentNames.add(teammateName);}
+  else if(event==='Stop'){
+    const st=completion||stopCompletionState(body,{state});
+    if(Array.isArray(body?.background_tasks)&&Array.isArray(body?.session_crons))state.seenAuthoritativeStop=true;
+    state.backgroundTasks=st.backgroundTasks;state.sessionCrons=st.sessionCrons;state.blockingSignature=st.blockingSignature||'';state.lastStopKind=st.kind;
+    state.status=st.kind==='finished'?'candidate_finished':st.kind==='background'?'waiting_background':'completion_unverified';
+  } else if(event==='StopFailure')state.status='failed';
+  else if(event==='Notification'&&body.notification_type==='agent_needs_input')state.status='waiting_user';
   else if(event==='SessionEnd'){state.status='ended';setTimeout(()=>{if(sessionStates.get(state.sessionId)===state)sessionStates.delete(state.sessionId);},1000);}
   pruneSessionStates();return state;
 }
-function knownBackgroundPending(body){const state=getSessionState(body,false);return !!state&&(state.status==='waiting_background'||state.backgroundTasks.length>0||state.sessionCrons.length>0);}
-function reasonFor(body, id) {
-  const e = body?.hook_event_name || 'Claude event';
-  switch(id) {
-    case 'askUserQuestion': return 'Claude asked a question';
-    case 'exitPlanMode': return 'Claude is waiting for plan approval';
-    case 'backgroundPending': return pendingWorkReason(body);
-    case 'stopUnverified': return 'Claude stopped, but final completion could not be verified from the task registry';
-    case 'permissionRequest': return `Permission requested${body.tool_name?` for ${brief(body.tool_name)}`:''}`;
-    case 'permissionDenied': return `Permission denied${body.tool_name?` for ${brief(body.tool_name)}`:''}`;
-    case 'postToolUseFailure': return `Tool failed${body.tool_name?`: ${brief(body.tool_name)}`:''}`;
-    case 'postToolUse': return `Tool succeeded${body.tool_name?`: ${brief(body.tool_name)}`:''}`;
-    case 'preToolUse': return `Tool starting${body.tool_name?`: ${brief(body.tool_name)}`:''}`;
-    case 'notificationPermissionPrompt': return 'Permission reminder';
-    case 'notificationIdlePrompt': return 'Claude idle reminder';
-    case 'notificationAgentNeedsInput': return 'Background agent needs your input';
-    case 'notificationAgentCompleted': return 'Background session completed';
-    case 'notificationQuotaResumed': return 'Claude automatically resumed after a usage-limit wait';
-    case 'notificationQuotaStale': return 'Usage limit reset; Claude is waiting for you to resume';
-    case 'notificationQuotaDisabled': return 'Claude stopped waiting for automatic usage-limit resume';
-    case 'notification': return `Notification${body.notification_type?`: ${brief(body.notification_type)}`:''}`;
-    case 'subagentStart': return `Subagent started${body.agent_type?`: ${brief(body.agent_type)}`:''}`;
-    case 'subagentStop': return `Agent finished${body.agent_type?`: ${brief(body.agent_type)}`:''}${body.agent_id?` (${brief(body.agent_id,24)})`:''}`;
-    case 'taskCreated': return `Task created${body.task_subject?`: ${brief(body.task_subject)}`:''}`;
-    case 'taskCompleted': return `Task completed${body.task_subject?`: ${brief(body.task_subject)}`:''}`;
-    case 'stop': return 'Claude fully finished — no background tasks or scheduled wakeups remain';
-    case 'stopFailure': return `Claude stopped with an error${body.error?`: ${brief(body.error)}`:''}`;
-    case 'teammateIdle': return `Teammate idle${body.teammate_name?`: ${brief(body.teammate_name)}`:''}`;
-    case 'configChange': return `Claude configuration changed${body.source?`: ${brief(body.source)}`:''}`;
-    case 'cwdChanged': return 'Working directory changed';
-    case 'directoryAdded': return `Directory added${body.directory?`: ${brief(body.directory)}`:''}`;
-    case 'fileChanged': return `Watched file ${brief(body.event)||'changed'}${body.file_path?`: ${path.basename(body.file_path)}`:''}`;
-    case 'preCompact': return `Context compaction starting${body.trigger?`: ${brief(body.trigger)}`:''}`;
-    case 'postCompact': return `Context compaction finished${body.trigger?`: ${brief(body.trigger)}`:''}`;
-    case 'preModelSwitch': return `Model switch requested${body.from_model||body.to_model?`: ${brief(body.from_model)||'?'} → ${brief(body.to_model)||'?'}`:''}`;
-    case 'postModelSwitch': return `Model switched${body.from_model||body.to_model?`: ${brief(body.from_model)||'?'} → ${brief(body.to_model)||'?'}`:''}`;
-    case 'sessionStart': return `Claude session started${body.source?`: ${brief(body.source)}`:''}`;
-    case 'sessionEnd': return `Claude session ended${body.reason?`: ${brief(body.reason)}`:''}`;
-    case 'elicitation': return `MCP needs input${body.mcp_server_name?`: ${brief(body.mcp_server_name)}`:''}`;
-    case 'elicitationResult': return `MCP input answered${body.mcp_server_name?`: ${brief(body.mcp_server_name)}`:''}`;
-    case 'instructionsLoaded': return 'Claude instructions loaded';
-    case 'userPromptSubmit': return 'Prompt submitted';
-    case 'userPromptExpansion': return 'Prompt expanded';
-    case 'messageDisplay': return 'Claude message displayed';
-    case 'postToolBatch': return 'Parallel tool batch finished';
-    case 'setup': return 'Claude setup event';
-    case 'worktreeRemove': return 'Worktree removed';
-    default: return e;
+function knownBackgroundPending(body){const state=getSessionState(body,false);return !!state&&state.status==='waiting_background';}
+function reasonFor(body,id,completion=null){
+  const e=body?.hook_event_name||'Claude event';
+  switch(id){
+    case 'askUserQuestion':return'Claude asked a question';case 'exitPlanMode':return'Claude is waiting for plan approval';case 'backgroundPending':return pendingWorkReason(body,completion);case 'stopUnverified':return'Claude stopped, but final completion could not be verified from the task registry';
+    case 'permissionRequest':return`Permission requested${body.tool_name?` for ${brief(body.tool_name)}`:''}`;case 'permissionDenied':return`Permission denied${body.tool_name?` for ${brief(body.tool_name)}`:''}`;case 'postToolUseFailure':return`Tool failed${body.tool_name?`: ${brief(body.tool_name)}`:''}`;case 'postToolUse':return`Tool succeeded${body.tool_name?`: ${brief(body.tool_name)}`:''}`;case 'preToolUse':return`Tool starting${body.tool_name?`: ${brief(body.tool_name)}`:''}`;
+    case 'notificationPermissionPrompt':return'Permission reminder';case 'notificationIdlePrompt':return'Claude idle reminder';case 'notificationAgentNeedsInput':return'Background agent needs your input';case 'notificationAgentCompleted':return'Background session completed';case 'notificationQuotaResumed':return'Claude automatically resumed after a usage-limit wait';case 'notificationQuotaStale':return'Usage limit reset; Claude is waiting for you to resume';case 'notificationQuotaDisabled':return'Claude stopped waiting for automatic usage-limit resume';case 'notification':return`Notification${body.notification_type?`: ${brief(body.notification_type)}`:''}`;
+    case 'subagentStart':return`Subagent started${body.agent_type?`: ${brief(body.agent_type)}`:''}`;case 'subagentStop':return`Agent finished${body.agent_type?`: ${brief(body.agent_type)}`:''}${body.agent_id?` (${brief(body.agent_id,24)})`:''}`;case 'taskCreated':return`Task created${body.task_subject?`: ${brief(body.task_subject)}`:''}`;case 'taskCompleted':return`Task completed${body.task_subject?`: ${brief(body.task_subject)}`:''}`;
+    case 'stop':return completion?.compatibility?'Claude finished (compatibility mode; background registry was unavailable)':'Claude fully finished — no blocking background work or one-shot scheduled wakeups remain';case 'stopFailure':return`Claude stopped with an error${body.error?`: ${brief(body.error)}`:''}`;case 'teammateIdle':return`Teammate idle${body.teammate_name?`: ${brief(body.teammate_name)}`:''}`;case 'configChange':return`Claude configuration changed${body.source?`: ${brief(body.source)}`:''}`;case 'cwdChanged':return'Working directory changed';case 'directoryAdded':return`Directory added${body.directory?`: ${brief(body.directory)}`:''}`;case 'fileChanged':return`Watched file ${brief(body.event)||'changed'}${body.file_path?`: ${path.basename(body.file_path)}`:''}`;
+    case 'preCompact':return`Context compaction starting${body.trigger?`: ${brief(body.trigger)}`:''}`;case 'postCompact':return`Context compaction finished${body.trigger?`: ${brief(body.trigger)}`:''}`;case 'preModelSwitch':return`Model switch requested${body.from_model||body.to_model?`: ${brief(body.from_model)||'?'} → ${brief(body.to_model)||'?'}`:''}`;case 'postModelSwitch':return`Model switched${body.from_model||body.to_model?`: ${brief(body.from_model)||'?'} → ${brief(body.to_model)||'?'}`:''}`;case 'sessionStart':return`Claude session started${body.source?`: ${brief(body.source)}`:''}`;case 'sessionEnd':return`Claude session ended${body.reason?`: ${brief(body.reason)}`:''}`;case 'elicitation':return`MCP needs input${body.mcp_server_name?`: ${brief(body.mcp_server_name)}`:''}`;case 'elicitationResult':return`MCP input answered${body.mcp_server_name?`: ${brief(body.mcp_server_name)}`:''}`;case 'instructionsLoaded':return'Claude instructions loaded';case 'userPromptSubmit':return'Prompt submitted';case 'userPromptExpansion':return'Prompt expanded';case 'messageDisplay':return'Claude message displayed';case 'postToolBatch':return'Parallel tool batch finished';case 'setup':return'Claude setup event';case 'worktreeRemove':return'Worktree removed';default:return e;
   }
 }
-const NOTIFICATION_PROFILE_BY_TYPE = new Map([
-  ['permission_prompt','notificationPermissionPrompt'],
-  ['idle_prompt','notificationIdlePrompt'],
-  ['agent_needs_input','notificationAgentNeedsInput'],
-  ['agent_completed','notificationAgentCompleted'],
-  ['quota_auto_resume_fired','notificationQuotaResumed'],
-  ['quota_auto_resume_stale','notificationQuotaStale'],
-  ['quota_auto_resume_disabled','notificationQuotaDisabled']
-]);
-function candidateProfiles(body, options={}) {
-  const event = body?.hook_event_name;
-  if (event === 'PreToolUse') {
-    if (body.tool_name === 'AskUserQuestion') return ['askUserQuestion','preToolUse'];
-    if (body.tool_name === 'ExitPlanMode') return ['exitPlanMode','preToolUse'];
-    return ['preToolUse'];
-  }
-  if(event==='Stop'){
-    const state=stopCompletionState(body);
-    if(state.kind==='background')return['backgroundPending'];
-    if(state.kind==='finished')return['stop'];
-    const strict=options.strictCompletionVerification===undefined?cfg().get('strictCompletionVerification',true):!!options.strictCompletionVerification;
-    return strict?['stopUnverified']:['stop'];
-  }
-  if(event==='Notification'){
-    const type=String(body?.notification_type||'');
-    if(type==='idle_prompt'&&knownBackgroundPending(body))return['backgroundPending'];
-    const specific=NOTIFICATION_PROFILE_BY_TYPE.get(type);return specific?[specific,'notification']:['notification'];
-  }
-  const id = EVENT_BY_HOOK.get(event);
-  return id ? [id] : [];
+const NOTIFICATION_PROFILE_BY_TYPE=new Map([['permission_prompt','notificationPermissionPrompt'],['idle_prompt','notificationIdlePrompt'],['agent_needs_input','notificationAgentNeedsInput'],['agent_completed','notificationAgentCompleted'],['quota_auto_resume_fired','notificationQuotaResumed'],['quota_auto_resume_stale','notificationQuotaStale'],['quota_auto_resume_disabled','notificationQuotaDisabled']]);
+function candidateProfiles(body,options={}){
+  const event=body?.hook_event_name;
+  if(event==='PreToolUse'){if(body.tool_name==='AskUserQuestion')return['askUserQuestion','preToolUse'];if(body.tool_name==='ExitPlanMode')return['exitPlanMode','preToolUse'];return['preToolUse'];}
+  if(event==='Stop'){if(body?.agent_id)return[];const state=options.completionState||stopCompletionState(body,{...options,state:getSessionState(body,false)});if(state.kind==='background')return['backgroundPending'];if(state.kind==='finished')return['stop'];return['stopUnverified'];}
+  if(event==='Notification'){const type=String(body?.notification_type||'');if(type==='idle_prompt'&&knownBackgroundPending(body))return[];const specific=NOTIFICATION_PROFILE_BY_TYPE.get(type);return specific?[specific,'notification']:['notification'];}
+  const id=EVENT_BY_HOOK.get(event);return id?[id]:[];
 }
-function classifyHook(body, settings=allEventSettings(), options={}) {
-  updateSessionState(body);
-  for (const id of candidateProfiles(body,options)) {
-    if (settings[id]?.enabled) return { id, reason:reasonFor(body,id) };
-    // Stop/background classifications are terminal: never fall through from
-    // background/unverified states to the main Finished profile.
-    if(body?.hook_event_name==='Stop')break;
-  }
-  return null;
+function backgroundAlertShouldFire(previous,completion,options={}){const mode=String(options.backgroundAlertMode||cfg().get('backgroundAlertMode','transition'));if(mode==='everyStop')return true;if(!previous||previous.status!=='waiting_background')return true;if(mode==='changes')return previous.blockingSignature!==completion.blockingSignature;return false;}
+function classifyHook(body,settings=allEventSettings(),options={}){
+  const event=body?.hook_event_name;if(event==='Stop'&&body?.agent_id)return null;
+  const existing=getSessionState(body,false),previous=existing?{status:existing.status,blockingSignature:existing.blockingSignature,seenAuthoritativeStop:existing.seenAuthoritativeStop}:null;
+  const completion=event==='Stop'?(options.completionState||stopCompletionState(body,{...options,state:existing})):null;updateSessionState(body,completion);
+  for(const id of candidateProfiles(body,{...options,completionState:completion})){if(id==='backgroundPending'&&!backgroundAlertShouldFire(previous,completion,options))return null;if(settings[id]?.enabled)return{id,reason:reasonFor(body,id,completion),completion,defer:id==='stop'};if(event==='Stop')break;}return null;
 }
-function shouldPlay(id) {
-  if (!cfg().get('enabled',true)) return false;
-  const debounce = Math.round(clamp(cfg().get('debounceMs',650),0,10000));
-  const now=Date.now(), last=lastPlayedAt.get(id)||0;
-  if (now-last < debounce) return false;
-  lastPlayedAt.set(id,now); return true;
-}
-async function playProfile(id, reason, force=false, overrides={}) {
-  const def=EVENT_MAP.get(id); if (!def) return;
-  const setting=eventSetting(id); if (!setting) return;
-  if (!force && (!setting.enabled || !shouldPlay(id))) return;
-  const sound = overrides.sound || setting.sound;
-  const volume = overrides.volume===undefined ? setting.volume : Math.round(clamp(overrides.volume,0,200));
-  const repeat = overrides.repeat===undefined ? setting.repeat : Math.round(clamp(overrides.repeat,1,5));
-  const file = soundPathFor(sound);
-  log(`${def.label}: ${reason} | sound=${sound} volume=${volume}% repeat=${repeat} | ${file}`);
-  if (cfg().get('showVisualNotifications',false) && !force) vscode.window.showInformationMessage(`${def.label}: ${reason}`);
-  try { await enqueuePlayback(()=>playAudioFile(file,volume,repeat),def.label); }
-  catch(error) {
-    const message=error?.message||String(error); log(`Unable to play sound: ${message}`);
-    vscode.window.showWarningMessage(`Claude Sound Alerts could not play audio: ${message}`,'Open Log').then(c=>{ if(c==='Open Log') output.show(true); });
-  }
+function eventDedupeKey(id,body){const sid=sessionKey(body)||'global';if(['stop','backgroundPending','stopUnverified'].includes(id))return`${id}:${sid}`;if(id==='subagentStop')return`${id}:${sid}:${body?.agent_id||'agent'}`;if(id==='taskCompleted')return`${id}:${sid}:${body?.task_id||'task'}`;return id;}
+function shouldPlay(id,body=null){if(!cfg().get('enabled',true))return false;const debounce=Math.round(clamp(cfg().get('debounceMs',650),0,10000));const key=eventDedupeKey(id,body),now=Date.now(),last=lastPlayedAt.get(key)||0;if(now-last<debounce)return false;lastPlayedAt.set(key,now);return true;}
+async function playProfile(id,reason,force=false,overrides={},body=null){const def=EVENT_MAP.get(id);if(!def)return;const setting=eventSetting(id);if(!setting)return;if(!force&&(!setting.enabled||!shouldPlay(id,body)))return;const sound=overrides.sound||setting.sound;const volume=overrides.volume===undefined?setting.volume:Math.round(clamp(overrides.volume,0,200));const repeat=overrides.repeat===undefined?setting.repeat:Math.round(clamp(overrides.repeat,1,5));const file=soundPathFor(sound);log(`${def.label}: ${reason} | sound=${sound} volume=${volume}% repeat=${repeat} | ${file}`);if(cfg().get('showVisualNotifications',false)&&!force)vscode.window.showInformationMessage(`${def.label}: ${reason}`);try{await enqueuePlayback(()=>playAudioFile(file,volume,repeat),def.label);}catch(error){const message=error?.message||String(error);log(`Unable to play sound: ${message}`);vscode.window.showWarningMessage(`Claude Sound Alerts could not play audio: ${message}`,'Open Log').then(c=>{if(c==='Open Log')output.show(true);});}}
+function cancelDeferredFinished(body,why='session continued'){const key=completionKey(body),pending=pendingFinished.get(key);if(!pending)return false;clearTimeout(pending.timer);pendingFinished.delete(key);log(`Finished cancelled (${why}); session continued.`);return true;}
+function deferFinished(body,result,options={}){const key=completionKey(body);cancelDeferredFinished(body,'new completion candidate');const ms=Math.round(clamp(options.ms===undefined?cfg().get('finishedGraceMs',2000):options.ms,0,15000));const play=typeof options.play==='function'?options.play:()=>playProfile(result.id,result.reason,false,{},body);const fire=()=>{pendingFinished.delete(key);const state=getSessionState(body,false);if(state&&state.status!=='candidate_finished'){log(`Finished grace expired but session state is ${state.status}; sound suppressed.`);return;}if(state)state.status='finished';log(`Finished confirmed after ${ms} ms grace window.`);void play();};if(ms===0){fire();return null;}const timer=setTimeout(fire,ms);pendingFinished.set(key,{timer,createdAt:Date.now(),result,promptId:body?.prompt_id||null});log(`Finished candidate deferred for ${ms} ms to catch queued background-task wakeups.`);return timer;}
+function continuationCancelsFinished(body){const event=body?.hook_event_name;if(['UserPromptSubmit','PreToolUse','SubagentStart','SubagentStop','TaskCreated','TaskCompleted','PostToolUse','PostToolBatch','StopFailure','SessionEnd'].includes(event))return true;return event==='Notification'&&['agent_completed','agent_needs_input'].includes(String(body?.notification_type||''));}
+function stopDiagnostic(body,completion){return{at:Date.now(),sessionId:sessionKey(body),kind:completion.kind,verified:!!completion.verified,compatibility:!!completion.compatibility,reason:completion.reason,backgroundCount:completion.backgroundTasks.length,cronCount:completion.sessionCrons.length,ignoredTaskCount:completion.ignoredTaskCount||0,ignoredCronCount:completion.ignoredCronCount||0,textMatch:completion.textMatch||'',message:brief(body?.last_assistant_message,160)};}
+async function maybeWarnCompatibility(_body,completion){if(!completion?.compatibility||!extensionContext)return;if(extensionContext.globalState.get('v171CompatibilityWarningShown',false))return;await extensionContext.globalState.update('v171CompatibilityWarningShown',true);log('Completion registry was unavailable; auto compatibility mode treated Stop as a tentative finish candidate.');void vscode.window.showWarningMessage('Claude Sound Alerts could not verify background-task state for this Stop. Compatibility mode is being used; update Claude Code if this persists.','Open Claude Alerts').then(choice=>{if(choice==='Open Claude Alerts')void openControlPanel();});}
+async function handleHookLocally(body){
+  if(markRoutedEventSeen(body)){log(`Duplicate routed hook ignored: ${brief(body?.hook_event_name)||'unknown'}`);return true;}
+  if(continuationCancelsFinished(body))cancelDeferredFinished(body,body?.hook_event_name||body?.notification_type||'session activity');
+  if(body?.hook_event_name==='Stop'&&body?.agent_id){cancelDeferredFinished(body,'agent-context Stop');log(`Ignored Stop from agent context ${brief(body.agent_id,32)}; main Finished cannot fire from a subagent/teammate hook.`);return true;}
+  let completion=null;
+  if(body?.hook_event_name==='Stop'){completion=stopCompletionState(body,{state:getSessionState(body,false)});lastStopDiagnostic=stopDiagnostic(body,completion);log(`Stop classified as ${completion.kind.toUpperCase()}: ${completion.backgroundTasks.length} blocking task(s), ${completion.sessionCrons.length} pending wakeup(s), ${completion.ignoredTaskCount||0} task(s) ignored${completion.textMatch?`; waiting-text match: ${completion.textMatch}`:''}.`);scheduleUiState();if(completion.kind!=='finished')cancelDeferredFinished(body,`Stop classified ${completion.kind}`);void maybeWarnCompatibility(body,completion);}
+  const result=classifyHook(body,allEventSettings(),{completionState:completion});if(result?.id==='stop'){deferFinished(body,result);return true;}if(result){void playProfile(result.id,result.reason,false,{},body);return true;}log(`Ignored/disabled hook event: ${brief(body?.hook_event_name)||'unknown'}${body.tool_name?` / ${brief(body.tool_name)}`:''}${body.notification_type?` / ${brief(body.notification_type)}`:''}`);return true;
 }
 
 function createListenerServer(port) {
@@ -717,12 +748,8 @@ function createListenerServer(port) {
         const body=raw?JSON.parse(raw):{};
         if(body?.probe===true && body?.hook_event_name==='__claude_sound_alerts_probe__'){res.writeHead(204,{'Connection':'close'});res.end();return;}
         const routed=req.headers['x-claude-sound-alerts-routed']==='1';
-        if(routed){
-          const result=classifyHook(body);
-          if(result)void playProfile(result.id,result.reason);
-          else log(`Ignored/disabled hook event: ${brief(body.hook_event_name)||'unknown'}${body.tool_name?` / ${brief(body.tool_name)}`:''}${body.notification_type?` / ${brief(body.notification_type)}`:''}`);
-        }else void routeIncomingHook(body);
         res.writeHead(204,{'Connection':'close'});res.end();
+        if(routed)setImmediate(()=>{void handleHookLocally(body);});else void routeIncomingHook(body);
       }catch(error){log(`Invalid hook request ignored: ${error.message||error}`);res.writeHead(204,{'Connection':'close'});res.end();}
     });
   });
@@ -818,46 +845,20 @@ function commandRelayHandler(url){
     ? {type:'command',command:'powershell.exe',args:['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',file,url],timeout:10,async:true}
     : {type:'command',command:'sh',args:[file,url],timeout:10,async:true};
 }
-function desiredHookGroups(url, settings=allEventSettings()){
-  const out={};
-  const live=EVENT_DEFS.filter(d=>!d.unavailable && settings[d.id]?.enabled);
-
+function completionStateHooksNeeded(settings){return !!(settings.stop?.enabled||settings.backgroundPending?.enabled||settings.stopUnverified?.enabled||settings.notificationIdlePrompt?.enabled);}
+function desiredHookGroups(url,settings=allEventSettings()){
+  const out={},live=EVENT_DEFS.filter(d=>!d.unavailable&&settings[d.id]?.enabled),stateNeeded=completionStateHooksNeeded(settings);
   const genericPreTool=live.some(d=>d.id==='preToolUse');
-  if(genericPreTool) {
-    out.PreToolUse=[{hooks:[hookHandler(url)]}];
-  } else {
-    const toolNames=[];
-    if(live.some(d=>d.id==='askUserQuestion')) toolNames.push('AskUserQuestion');
-    if(live.some(d=>d.id==='exitPlanMode')) toolNames.push('ExitPlanMode');
-    if(toolNames.length) out.PreToolUse=[{matcher:toolNames.join('|'),hooks:[hookHandler(url)]}];
-  }
-
-  // Stop must be installed whenever any completion-state profile is enabled.
-  // The runtime classifier decides Finished vs Background vs Unverified.
-  if(live.some(d=>d.hookEvent==='Stop')) out.Stop=[{hooks:[hookHandler(url)]}];
-
-  // Notification subtypes can use exact matchers, avoiding generic notification
-  // traffic unless the catch-all notification profile is explicitly enabled.
-  const genericNotification=live.some(d=>d.id==='notification');
-  if(genericNotification) out.Notification=[{hooks:[hookHandler(url)]}];
-  else {
-    const matchers=[...new Set(live.filter(d=>d.hookEvent==='Notification'&&d.virtual&&d.matcher).map(d=>d.matcher))];
-    if(matchers.length) out.Notification=[{matcher:matchers.join('|'),hooks:[hookHandler(url)]}];
-  }
-
-  for(const d of live) {
-    if(d.virtual || d.hookEvent==='PreToolUse' || d.hookEvent==='Stop' || d.hookEvent==='Notification' || d.hookEvent==='FileChanged' || d.transport==='command') continue;
-    if(!out[d.hookEvent]) out[d.hookEvent]=[{hooks:[hookHandler(url)]}];
-  }
-
-  for(const d of live.filter(d=>d.transport==='command')) {
-    out[d.hookEvent]=[{hooks:[commandRelayHandler(url)]}];
-  }
-
-  if(live.some(d=>d.id==='fileChanged')) {
-    const names=(cfg().get('watchedFiles',[])||[]).map(String).map(v=>v.trim()).filter(Boolean).filter(v=>!v.includes('|'));
-    if(names.length) out.FileChanged=[{matcher:[...new Set(names)].join('|'),hooks:[hookHandler(url)]}];
-  }
+  if(genericPreTool)out.PreToolUse=[{hooks:[hookHandler(url)]}];else{const toolNames=[];if(live.some(d=>d.id==='askUserQuestion'))toolNames.push('AskUserQuestion');if(live.some(d=>d.id==='exitPlanMode'))toolNames.push('ExitPlanMode');if(toolNames.length)out.PreToolUse=[{matcher:toolNames.join('|'),hooks:[hookHandler(url)]}];}
+  if(stateNeeded||live.some(d=>d.hookEvent==='Stop'))out.Stop=[{hooks:[hookHandler(url)]}];
+  if(stateNeeded||live.some(d=>d.hookEvent==='UserPromptSubmit'))out.UserPromptSubmit=[{hooks:[hookHandler(url)]}];
+  if(stateNeeded||live.some(d=>d.hookEvent==='SubagentStart'))out.SubagentStart=[{hooks:[hookHandler(url)]}];
+  if(stateNeeded||live.some(d=>d.hookEvent==='SubagentStop'))out.SubagentStop=[{hooks:[hookHandler(url)]}];
+  if(stateNeeded||live.some(d=>d.hookEvent==='TeammateIdle'))out.TeammateIdle=[{hooks:[hookHandler(url)]}];
+  const genericNotification=live.some(d=>d.id==='notification');if(genericNotification)out.Notification=[{hooks:[hookHandler(url)]}];else{const matchers=[...new Set(live.filter(d=>d.hookEvent==='Notification'&&d.virtual&&d.matcher).map(d=>d.matcher))];if(matchers.length)out.Notification=[{matcher:matchers.join('|'),hooks:[hookHandler(url)]}];}
+  for(const d of live){if(d.virtual||['PreToolUse','Stop','Notification','UserPromptSubmit','SubagentStart','SubagentStop','FileChanged'].includes(d.hookEvent)||d.transport==='command')continue;if(!out[d.hookEvent])out[d.hookEvent]=[{hooks:[hookHandler(url)]}];}
+  for(const d of live.filter(d=>d.transport==='command'))out[d.hookEvent]=[{hooks:[commandRelayHandler(url)]}];
+  if(live.some(d=>d.id==='fileChanged')){const names=(cfg().get('watchedFiles',[])||[]).map(String).map(v=>v.trim()).filter(Boolean).filter(v=>!v.includes('|'));if(names.length)out.FileChanged=[{matcher:[...new Set(names)].join('|'),hooks:[hookHandler(url)]}];}
   return out;
 }
 
@@ -1327,6 +1328,38 @@ async function migrateV140PrimaryDefaults(){
   log('v1.4 migration applied to an existing explicit event configuration.');
 }
 
+const OLD_RECOMMENDED_V16=new Set(['askUserQuestion','stop','permissionRequest','permissionDenied','postToolUseFailure','stopFailure','subagentStop','taskCompleted','elicitation']);
+function enabledIdsFromRawEventSettings(raw){return new Set(Object.entries(raw||{}).filter(([,v])=>v&&typeof v==='object'&&v.enabled===true).map(([id])=>id));}
+function migrateV171EventSettingsObject(rawInput){
+  const raw={...(rawInput||{})},hadV17Shape=['backgroundPending','stopUnverified','notificationAgentNeedsInput','preModelSwitch','postModelSwitch'].some(id=>Object.prototype.hasOwnProperty.call(raw,id));
+  let changed=false,oldRecommended=false;
+  if(!hadV17Shape){
+    const enabled=enabledIdsFromRawEventSettings(raw);
+    oldRecommended=sameSet(enabled,OLD_RECOMMENDED_V16);
+    const sub=raw.subagentStop;
+    if(sub&&sub.sound==='calm-complete'&&(sub.volume===undefined||Number(sub.volume)===45)&&(sub.repeat===undefined||Number(sub.repeat)===1)){raw.subagentStop={...sub,sound:'finished'};changed=true;}
+    if(oldRecommended){
+      for(const def of EVENT_DEFS){
+        const current=raw[def.id]&&typeof raw[def.id]==='object'?raw[def.id]:defaultEventSetting(def);
+        raw[def.id]={...current,enabled:!def.unavailable&&PRESET_GROUPS.recommended.has(def.id)};
+      }
+      changed=true;
+    }
+  }
+  return{raw,changed,oldRecommended,hadV17Shape};
+}
+async function migrateV171Completion(){
+  if(extensionContext.globalState.get('v171CompletionMigrationDone',false))return;
+  let changed=false,oldRecommended=false;
+  const inspectedEvents=cfg().inspect('eventSettings');
+  const explicit=inspectedEvents?.globalValue&&typeof inspectedEvents.globalValue==='object'?inspectedEvents.globalValue:null;
+  if(explicit&&Object.keys(explicit).length){const result=migrateV171EventSettingsObject(explicit);changed=result.changed;oldRecommended=result.oldRecommended;if(result.changed)await cfg().update('eventSettings',result.raw,vscode.ConfigurationTarget.Global);}
+  const newModeInspect=cfg().inspect('completionVerificationMode');
+  if(newModeInspect?.globalValue===undefined){const old=cfg().inspect('strictCompletionVerification')?.globalValue;if(old!==undefined){await cfg().update('completionVerificationMode',old?'strict':'legacy',vscode.ConfigurationTarget.Global);changed=true;}}
+  await extensionContext.globalState.update('v171CompletionMigrationDone',true);
+  if(changed||oldRecommended){await extensionContext.globalState.update('v171ShowWhatsNew',true);log(`v1.7.1 completion migration applied${oldRecommended?' (old Recommended preset upgraded)':''}.`);}else log('v1.7.1 completion migration required no stored-setting changes.');
+}
+
 const PRESET_GROUPS={
   minimal:new Set(['askUserQuestion','stop']),
   recommended:new Set(['askUserQuestion','stop','backgroundPending','permissionRequest','permissionDenied','postToolUseFailure','stopFailure','taskCompleted','elicitation','notificationAgentNeedsInput'])
@@ -1371,9 +1404,9 @@ async function getUiState(){
   const hs=await hookInstallStatus(); const brokerPort=hs.targetPort||null;
   const settings=allEventSettings();
   return {
-    enabled:cfg().get('enabled',true), visualNotifications:cfg().get('showVisualNotifications',false), strictCompletionVerification:cfg().get('strictCompletionVerification',true), repeatGapMs:Math.round(clamp(cfg().get('repeatGapMs',150),0,3000)),
+    enabled:cfg().get('enabled',true), visualNotifications:cfg().get('showVisualNotifications',false), completionVerificationMode:completionVerificationMode(), finishedGraceMs:Math.round(clamp(cfg().get('finishedGraceMs',2000),0,15000)), textHeuristicDowngrade:cfg().get('textHeuristicDowngrade',true)!==false, backgroundAlertMode:String(cfg().get('backgroundAlertMode','transition')), ignoredBackgroundTaskTypes:(Array.isArray(cfg().get('ignoredBackgroundTaskTypes',['monitor_ws']))?cfg().get('ignoredBackgroundTaskTypes',['monitor_ws']):['monitor_ws']).map(String), recurringCronsCountAsPending:cfg().get('recurringCronsCountAsPending',false)===true, repeatGapMs:Math.round(clamp(cfg().get('repeatGapMs',150),0,3000)),
     hooks:hs, listenerActive:listenerIsActive(), listenerMode, listenerDetail, listenerPort, brokerPort, listenerBasePort:getBasePort(), listenerPortCount:getPortCount(), platform:process.platform,
-    events:EVENT_DEFS.map(d=>({...d,setting:settings[d.id]})), categories:CATEGORIES, sounds:allSoundOptions(), watchedFiles:cfg().get('watchedFiles',[])||[], activePreset:activePresetName(settings)
+    events:EVENT_DEFS.map(d=>({...d,setting:settings[d.id]})), categories:CATEGORIES, sounds:allSoundOptions(), watchedFiles:cfg().get('watchedFiles',[])||[], activePreset:activePresetName(settings), lastStopDiagnostic
   };
 }
 async function sendUiState(){if(!controlPanel)return;try{await controlPanel.webview.postMessage({type:'state',state:await getUiState()});}catch(_error){} }
@@ -1419,7 +1452,7 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .section-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;margin:22px 0 10px}
 .section-head h2{font-size:16px;margin:0;font-weight:650}
 .section-caption{font-size:12px;color:var(--vscode-descriptionForeground);margin-top:3px}
-.primary-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.primary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
 .eventgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 .event{border-radius:12px;padding:15px;min-width:0}
 .event.primary{border-color:var(--vscode-focusBorder);background:color-mix(in srgb,var(--vscode-sideBar-background) 92%,var(--vscode-focusBorder) 8%)}
@@ -1486,7 +1519,7 @@ details.more[open]>summary:before{transform:rotate(90deg)}
   </div>
 </div>
 
-<div class="section-head"><div><h2>Primary alerts</h2><div class="section-caption">Question and Finished are enabled by default. Background / Waiting is available separately and stays off until you enable it.</div></div></div>
+<div class="section-head"><div><h2>Primary alerts</h2><div class="section-caption">Question and Finished are enabled by default. Every Stop resolves to exactly one of Background / Waiting, Completion Unverified, or Finished; only enabled profiles make a sound.</div></div></div>
 <div id="primaryEvents" class="primary-grid"></div>
 
 <div class="section-head"><div><h2>Other Claude events</h2><div class="section-caption">Optional alerts for permissions, errors, tools, agents, tasks, sessions, and more.</div></div><div class="filters"><input id="search" class="search" type="text" placeholder="Search events…" aria-label="Search Claude events"><select id="category" aria-label="Filter events by category"><option value="">All categories</option></select></div></div>
@@ -1501,9 +1534,17 @@ details.more[open]>summary:before{transform:rotate(90deg)}
       <input id="watchedFiles" class="filewatch" type="text" placeholder=".env, package.json" aria-label="Watched filenames for FileChanged alerts">
     </div>
     <div>
+      <div class="panel-title">Completion intelligence</div>
+      <div class="field" style="margin-bottom:10px"><label for="completionMode">Completion verification</label><select id="completionMode"><option value="auto">Auto — recommended</option><option value="strict">Strict — require registry data</option><option value="legacy">Legacy — Stop can finish without registry data</option></select></div>
+      <div class="footerline"><label>Finished grace <input id="finishedGrace" type="number" min="0" max="15000" step="100" style="width:86px"> ms</label><label>Background sound <select id="backgroundMode"><option value="transition">On transition only</option><option value="changes">When pending set changes</option><option value="everyStop">Every pending Stop</option></select></label></div>
+      <div class="footerline" style="margin-top:9px"><label><input id="textDowngrade" type="checkbox"> Downgrade waiting-language to Background</label><label><input id="recurringCrons" type="checkbox"> Recurring crons count as pending</label></div>
+      <div class="field" style="margin-top:10px"><label for="ignoredTaskTypes">Ignored ambient task types (comma-separated)</label><input id="ignoredTaskTypes" type="text" placeholder="monitor_ws" aria-label="Ignored background task types"></div>
+      <div id="lastStop" class="note" style="margin-top:10px"></div>
+    </div>
+    <div>
       <div class="panel-title">Global controls</div>
-      <div class="footerline"><label><input id="enabled" type="checkbox"> Enable alerts</label><label><input id="visual" type="checkbox"> VS Code popups</label><label><input id="strictCompletion" type="checkbox"> Verify final completion</label><label>Repeat gap <input id="gap" type="number" min="0" max="3000" step="50" style="width:82px"> ms</label></div>
-      <div class="note" style="margin-top:8px">Verify final completion prevents the Done sound when Stop lacks authoritative background-task state. Volume above 100% digitally boosts the WAV and can clip.</div>
+      <div class="footerline"><label><input id="enabled" type="checkbox"> Enable alerts</label><label><input id="visual" type="checkbox"> VS Code popups</label><label>Repeat gap <input id="gap" type="number" min="0" max="3000" step="50" style="width:82px"> ms</label></div>
+      <div class="note" style="margin-top:8px">Auto verification learns whether a session supplies the task registry, waits through a short grace window for Claude's self-resume turns, filters terminal/ignored ambient tasks, and can downgrade a Done candidate when Claude explicitly says work is still running. Volume above 100% digitally boosts the WAV and can clip.</div>
     </div>
   </div>
 </details>
@@ -1516,7 +1557,7 @@ function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&l
 function soundOptions(selected){return(state.sounds||[]).map(s=>'<option value="'+esc(s.id)+'" '+(s.id===selected?'selected':'')+'>'+esc(s.label)+(s.builtIn?'':' (My Sound)')+'</option>').join('')}
 function renderLibrary(){const custom=(state.sounds||[]).filter(s=>!s.builtIn);$('customSounds').innerHTML=custom.length?custom.map(s=>'<span class="soundchip">'+esc(s.label)+' <button class="secondary removeSound" data-id="'+esc(s.id)+'" title="Remove" style="padding:1px 5px">×</button></span>').join(''):'<span class="note">No personal sounds added yet.</span>';document.querySelectorAll('.removeSound').forEach(b=>b.addEventListener('click',()=>post('removeSound',{id:b.dataset.id})))}
 function eventCard(e,primary){
-  const s=e.setting||{},locked=!!e.unavailable,primaryTitle={askUserQuestion:'Question',backgroundPending:'Background / Waiting',stop:'Finished'},title=primary?(primaryTitle[e.id]||e.label):e.label;
+  const s=e.setting||{},locked=!!e.unavailable,primaryTitle={askUserQuestion:'Question',backgroundPending:'Background / Waiting',stopUnverified:'Unverified',stop:'Finished'},title=primary?(primaryTitle[e.id]||e.label):e.label;
   const sid='sound-'+e.id,vid='volume-'+e.id,rid='repeat-'+e.id;
   return '<section class="event '+(primary?'primary ':'')+(locked?'disabled-card ':'')+(!s.enabled?'off':'')+'" data-id="'+esc(e.id)+'" data-category="'+esc(e.category)+'" data-search="'+esc((e.label+' '+e.description+' '+e.hookEvent).toLowerCase())+'"><div class="head"><div><div class="event-title">'+esc(title)+'</div><div class="meta">'+(primary?'<span class="primary-badge">Primary</span>':'')+'<span class="badge">'+esc(e.hookEvent)+'</span><span class="badge">'+esc(e.category)+'</span></div></div><label class="switch"><input class="evtEnabled" type="checkbox" '+(s.enabled?'checked':'')+' '+(locked?'disabled':'')+'><span>'+(s.enabled?'On':'Off')+'</span></label></div><div class="hint">'+esc(e.description)+'</div>'+(locked?'<div class="safety">Not hooked: configuring WorktreeCreate would replace Claude Code’s normal worktree creation behavior.</div>':'<div class="controlgrid"><div class="field"><label for="'+sid+'">Sound</label><select id="'+sid+'" class="evtSound">'+soundOptions(s.sound)+'</select></div><div class="field"><label for="'+vid+'">Volume <span class="boost">'+(s.volume>100?'BOOST':'')+'</span></label><div class="volline"><input id="'+vid+'" class="evtVolume" type="range" min="0" max="200" value="'+s.volume+'"><span class="value">'+s.volume+'%</span></div></div><div class="field"><label for="'+rid+'">Repeat</label><select id="'+rid+'" class="evtRepeat">'+[1,2,3,4,5].map(n=>'<option value="'+n+'" '+(n===s.repeat?'selected':'')+'>'+n+'×</option>').join('')+'</select></div></div><div class="eventactions"><button class="preview">Preview</button></div>')+'</section>';
 }
@@ -1554,14 +1595,14 @@ function render(){
   else hookText='⚠ Hooks incomplete ('+hs.installed+'/'+hs.total+')';
   $('hookStatus').textContent=hookText;$('hookStatus').className='pill '+(hookOk?'ok':'warn');$('hookStatus').title=hs.error||hs.targetUrl||'';
   const lm=state.listenerMode||'inactive';$('listenerStatus').textContent=lm==='owned'?'● Listener '+state.listenerPort+(state.brokerPort===state.listenerPort?' — router':''):lm==='disabled'?'○ Listener disabled':'○ Listener inactive';$('listenerStatus').className='pill '+(state.listenerActive?'ok':'warn');$('listenerStatus').title=state.listenerDetail||'';
-  $('enabled').checked=!!state.enabled;$('visual').checked=!!state.visualNotifications;$('strictCompletion').checked=state.strictCompletionVerification!==false;$('gap').value=state.repeatGapMs;$('watchedFiles').value=(state.watchedFiles||[]).join(', ');
+  $('enabled').checked=!!state.enabled;$('visual').checked=!!state.visualNotifications;$('gap').value=state.repeatGapMs;$('watchedFiles').value=(state.watchedFiles||[]).join(', ');$('completionMode').value=state.completionVerificationMode||'auto';$('finishedGrace').value=state.finishedGraceMs??2000;$('backgroundMode').value=state.backgroundAlertMode||'transition';$('textDowngrade').checked=state.textHeuristicDowngrade!==false;$('recurringCrons').checked=!!state.recurringCronsCountAsPending;$('ignoredTaskTypes').value=(state.ignoredBackgroundTaskTypes||[]).join(', ');const diag=state.lastStopDiagnostic;$('lastStop').textContent=diag?('Last Stop: '+String(diag.kind||'unknown').toUpperCase()+' · '+diag.backgroundCount+' blocking task(s) · '+diag.cronCount+' wakeup(s)'+(diag.textMatch?' · waiting text: '+diag.textMatch:'')+(diag.compatibility?' · compatibility mode':'')):'No Stop classification recorded in this VS Code window yet.';
   const currentCat=saved.category||$('category').value;$('category').innerHTML='<option value="">All categories</option>'+(state.categories||[]).map(c=>'<option value="'+esc(c)+'">'+esc(c)+'</option>').join('');if((state.categories||[]).includes(currentCat))$('category').value=currentCat;
   $('search').value=saved.search||$('search').value||'';document.querySelector('details.more').open=!!saved.advanced;
-  const primaryOrder=['askUserQuestion','backgroundPending','stop'];const primaryIds=new Set(primaryOrder);const primary=(state.events||[]).filter(e=>primaryIds.has(e.id)).sort((a,b)=>primaryOrder.indexOf(a.id)-primaryOrder.indexOf(b.id));const others=(state.events||[]).filter(e=>!primaryIds.has(e.id));
+  const primaryOrder=['askUserQuestion','backgroundPending','stopUnverified','stop'];const primaryIds=new Set(primaryOrder);const primary=(state.events||[]).filter(e=>primaryIds.has(e.id)).sort((a,b)=>primaryOrder.indexOf(a.id)-primaryOrder.indexOf(b.id));const others=(state.events||[]).filter(e=>!primaryIds.has(e.id));
   $('primaryEvents').innerHTML=primary.map(e=>eventCard(e,true)).join('');$('events').innerHTML=others.map(e=>eventCard(e,false)).join('');renderLibrary();renderPreset();bindCards();applyFilter();requestAnimationFrame(()=>window.scrollTo(0,Number(saved.scrollY)||0));
 }
 
-$('installHooks').addEventListener('click',()=>post('installHooks'));$('removeHooks').addEventListener('click',()=>post('removeHooks'));$('openLog').addEventListener('click',()=>post('openLog'));$('addSound').addEventListener('click',()=>post('addSound'));document.querySelectorAll('[data-preset]').forEach(b=>b.addEventListener('click',()=>{b.disabled=true;post('applyPreset',{name:b.dataset.preset});setTimeout(()=>{b.disabled=false},500)}));$('enabled').addEventListener('change',e=>post('setGlobal',{key:'enabled',value:e.target.checked}));$('visual').addEventListener('change',e=>post('setGlobal',{key:'showVisualNotifications',value:e.target.checked}));$('strictCompletion').addEventListener('change',e=>post('setGlobal',{key:'strictCompletionVerification',value:e.target.checked}));$('gap').addEventListener('change',e=>post('setGlobal',{key:'repeatGapMs',value:Number(e.target.value)}));$('watchedFiles').addEventListener('change',e=>post('setWatchedFiles',{value:e.target.value}));$('search').addEventListener('input',()=>{applyFilter();saveViewState()});$('category').addEventListener('change',()=>{applyFilter();saveViewState()});document.querySelector('details.more').addEventListener('toggle',saveViewState);let scrollTimer;window.addEventListener('scroll',()=>{clearTimeout(scrollTimer);scrollTimer=setTimeout(saveViewState,150)});window.addEventListener('message',ev=>{const m=ev.data;if(m.type==='state'){saveViewState();state=m.state;render()}if(m.type==='eventSetting'){updateEventView(m.id,m.setting,m.activePreset)}if(m.type==='toast'){$('toast').textContent=m.text||'';if(m.text)setTimeout(()=>{if($('toast').textContent===m.text)$('toast').textContent=''},3000)}});render()})();
+$('installHooks').addEventListener('click',()=>post('installHooks'));$('removeHooks').addEventListener('click',()=>post('removeHooks'));$('openLog').addEventListener('click',()=>post('openLog'));$('addSound').addEventListener('click',()=>post('addSound'));document.querySelectorAll('[data-preset]').forEach(b=>b.addEventListener('click',()=>{b.disabled=true;post('applyPreset',{name:b.dataset.preset});setTimeout(()=>{b.disabled=false},500)}));$('enabled').addEventListener('change',e=>post('setGlobal',{key:'enabled',value:e.target.checked}));$('visual').addEventListener('change',e=>post('setGlobal',{key:'showVisualNotifications',value:e.target.checked}));$('completionMode').addEventListener('change',e=>post('setGlobal',{key:'completionVerificationMode',value:e.target.value}));$('finishedGrace').addEventListener('change',e=>post('setGlobal',{key:'finishedGraceMs',value:Number(e.target.value)}));$('backgroundMode').addEventListener('change',e=>post('setGlobal',{key:'backgroundAlertMode',value:e.target.value}));$('textDowngrade').addEventListener('change',e=>post('setGlobal',{key:'textHeuristicDowngrade',value:e.target.checked}));$('recurringCrons').addEventListener('change',e=>post('setGlobal',{key:'recurringCronsCountAsPending',value:e.target.checked}));$('ignoredTaskTypes').addEventListener('change',e=>post('setGlobal',{key:'ignoredBackgroundTaskTypes',value:String(e.target.value||'').split(',').map(v=>v.trim()).filter(Boolean)}));$('gap').addEventListener('change',e=>post('setGlobal',{key:'repeatGapMs',value:Number(e.target.value)}));$('watchedFiles').addEventListener('change',e=>post('setWatchedFiles',{value:e.target.value}));$('search').addEventListener('input',()=>{applyFilter();saveViewState()});$('category').addEventListener('change',()=>{applyFilter();saveViewState()});document.querySelector('details.more').addEventListener('toggle',saveViewState);let scrollTimer;window.addEventListener('scroll',()=>{clearTimeout(scrollTimer);scrollTimer=setTimeout(saveViewState,150)});window.addEventListener('message',ev=>{const m=ev.data;if(m.type==='state'){saveViewState();state=m.state;render()}if(m.type==='eventSetting'){updateEventView(m.id,m.setting,m.activePreset)}if(m.type==='toast'){$('toast').textContent=m.text||'';if(m.text)setTimeout(()=>{if($('toast').textContent===m.text)$('toast').textContent=''},3000)}});render()})();
 </script></body></html>`;
 }
 
@@ -1583,8 +1624,15 @@ async function openControlPanel(){
       }
       if(msg.action==='preview'){await playProfile(msg.id,'Control panel preview',true,{sound:msg.sound,volume:msg.volume,repeat:msg.repeat});controlPanel?.webview.postMessage({type:'toast',text:'Preview played.'});return;}
       if(msg.action==='setGlobal'){
-        const allowed=new Set(['enabled','showVisualNotifications','strictCompletionVerification','repeatGapMs']); if(!allowed.has(msg.key))return;
-        const value=msg.key==='repeatGapMs'?Math.round(clamp(msg.value,0,3000)):msg.value; await cfg().update(msg.key,value,vscode.ConfigurationTarget.Global); scheduleUiState();updateStatusBar();return;
+        const allowed=new Set(['enabled','showVisualNotifications','completionVerificationMode','finishedGraceMs','textHeuristicDowngrade','backgroundAlertMode','ignoredBackgroundTaskTypes','recurringCronsCountAsPending','repeatGapMs']); if(!allowed.has(msg.key))return;
+        let value=msg.value;
+        if(msg.key==='repeatGapMs')value=Math.round(clamp(value,0,3000));
+        else if(msg.key==='finishedGraceMs')value=Math.round(clamp(value,0,15000));
+        else if(msg.key==='completionVerificationMode')value=['auto','strict','legacy'].includes(String(value))?String(value):'auto';
+        else if(msg.key==='backgroundAlertMode')value=['transition','changes','everyStop'].includes(String(value))?String(value):'transition';
+        else if(msg.key==='ignoredBackgroundTaskTypes')value=[...new Set((Array.isArray(value)?value:[]).map(v=>String(v).trim().toLowerCase()).filter(Boolean))];
+        else if(['enabled','showVisualNotifications','textHeuristicDowngrade','recurringCronsCountAsPending'].includes(msg.key))value=!!value;
+        await cfg().update(msg.key,value,vscode.ConfigurationTarget.Global); scheduleUiState();if(['enabled'].includes(msg.key))updateStatusBar();if(['completionVerificationMode','ignoredBackgroundTaskTypes','recurringCronsCountAsPending'].includes(msg.key))scheduleHookReconcileIfShapeChanged(400);return;
       }
       if(msg.action==='setWatchedFiles'){
         const names=String(msg.value||'').split(',').map(v=>v.trim()).filter(Boolean).filter(v=>!v.includes('|')); await cfg().update('watchedFiles',[...new Set(names)],vscode.ConfigurationTarget.Global);
@@ -1623,10 +1671,11 @@ async function activate(context){
 
   try{initializeListenerToken();}catch(error){listenerToken=crypto.randomBytes(32).toString('hex');log(`Could not persist listener security token; using a temporary token: ${error.message||error}`);}
 
-  const migrations=[migrateV12Settings,migrateV131QuestionSound,migrateV132DoneAndErrorSounds,migrateV140PrimaryDefaults];
+  const migrations=[migrateV12Settings,migrateV131QuestionSound,migrateV132DoneAndErrorSounds,migrateV140PrimaryDefaults,migrateV171Completion];
   for(const migration of migrations){try{await migration();}catch(error){log(`Migration ${migration.name} failed; continuing with current/default settings: ${error.stack||error}`);}
   }
   hookShapeKey=currentHookShapeKey();
+  if(extensionContext.globalState.get('v171ShowWhatsNew',false)){await extensionContext.globalState.update('v171ShowWhatsNew',false);void vscode.window.showInformationMessage('Claude Sound Alerts updated completion detection for background-agent runs. Finished is now grace-delayed and old Recommended settings were upgraded.','Open Claude Alerts').then(choice=>{if(choice==='Open Claude Alerts')void openControlPanel();});}
 
   // Subscribe after migrations so migration writes do not trigger unnecessary
   // listener restarts, UI redraws, or hook reconciliation during activation.
@@ -1645,19 +1694,20 @@ async function activate(context){
   void startServer().then(async()=>{
     try{const status=await hookInstallStatus();if(status.oursAnywhere>0)await extensionContext.globalState.update('hooksManaged',true);if(status.oursAnywhere>0&&!status.complete)scheduleHookReconcile(800);}catch(error){log(`Initial hook reconciliation check failed: ${error.message||error}`);}
   });
-  log('Extension v1.7.0 activated. Background-aware completion is enabled; Done Fanfare is reserved for verified final completion.');
+  log('Extension v1.7.1 activated. Grace-delayed, background-aware completion is enabled; Done Fanfare is reserved for final completion candidates that survive continuation checks.');
 }
 async function deactivate(){
   if(hookReconcileTimer){clearTimeout(hookReconcileTimer);hookReconcileTimer=undefined;}
   if(uiStateTimer){clearTimeout(uiStateTimer);uiStateTimer=undefined;}
   if(retryTimer){clearTimeout(retryTimer);retryTimer=undefined;}
+  for(const pending of pendingFinished.values())try{clearTimeout(pending.timer);}catch(_error){} pendingFinished.clear();sessionRoutePins.clear();routedEventSeen.clear();
   stopHeartbeat();
   try{fs.unlinkSync(listenerRegistryFile());}catch(_error){}
   await stopServer(true,false);
 }
 const testApi=process.env.CLAUDE_SOUND_ALERTS_TEST==='1' ? {
-  EVENT_DEFS, parseClaudeSettingsText, patchTopLevelHooks, pcmWavInfo, scalePcmWav, audioPlaybackTimeoutMs, spawnCaptured, windowsAudioHostScript, stopCompletionState, candidateProfiles, classifyHook, updateSessionState, pendingWorkReason, NOTIFICATION_PROFILE_BY_TYPE,
+  EVENT_DEFS, PRESET_GROUPS, OLD_RECOMMENDED_V16, parseClaudeSettingsText, patchTopLevelHooks, pcmWavInfo, scalePcmWav, audioPlaybackTimeoutMs, spawnCaptured, windowsAudioHostScript, stopCompletionState, blockingTasks, blockingCrons, knownAmbientTask, waitingTextMatch, candidateProfiles, classifyHook, updateSessionState, getSessionState, pendingWorkReason, backgroundAlertShouldFire, deferFinished, cancelDeferredFinished, completionVerificationMode, migrateV171EventSettingsObject, NOTIFICATION_PROFILE_BY_TYPE,
   desiredHookGroups, desiredHookSignatures, ourHookSignatures, hookSignature, hasStoredEventSettingsFromInspection,
-  setTestStoragePath: value => { relayStoragePathOverride=value?path.resolve(String(value)):null; }
+  setTestStoragePath: value => { relayStoragePathOverride=value?path.resolve(String(value)):null; }, clearTestState:()=>{for(const p of pendingFinished.values())try{clearTimeout(p.timer);}catch(_error){}pendingFinished.clear();sessionStates.clear();sessionRoutePins.clear();routedEventSeen.clear();lastPlayedAt.clear();lastStopDiagnostic=null;}
 } : null;
 module.exports=testApi?{activate,deactivate,__test:testApi}:{activate,deactivate};

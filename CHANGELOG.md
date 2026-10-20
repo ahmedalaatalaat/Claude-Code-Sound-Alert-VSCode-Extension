@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.7.1
+
+- Added a configurable Finished grace window (2 seconds by default) and silently installed `UserPromptSubmit`/agent state hooks whenever completion tracking is active, preventing the Done Fanfare during Claude's immediate self-resume race after queued background-task notifications.
+- Filtered terminal background-task statuses and configurable ambient task types before deciding whether work is still blocking completion; `monitor_ws` is ignored by default while `teammate` remains blocking unless explicitly ignored.
+- Recurring session crons are non-blocking by default, with an advanced toggle to count them as pending.
+- Added Auto / Strict / Legacy completion verification. Auto preserves compatibility for older/partial Claude payloads but becomes strict after a session proves it supplies authoritative task registries.
+- Added a downgrade-only waiting-language heuristic for messages such as “still running”, “waiting for”, and “will report when they finish”.
+- Main-agent `Stop` events carrying `agent_id` are suppressed; `SubagentStop` no longer overwrites parent-session completion state.
+- Background / Waiting now plays only on the transition into waiting by default, with optional “task set changes” and “every Stop” modes; `idle_prompt` is suppressed while background work is known pending.
+- Added session-to-listener pinning for multi-window routing and unified local hook handling so routed/local paths use the same classification, grace, logging, and dedupe logic.
+- Added a v1.7.1 migration: old v1.6 Recommended users move to the new Recommended set, legacy Agent Finished default sound becomes `finished.wav`, and explicit legacy strict-verification choices migrate to the new mode.
+- Expanded the Primary Alerts UI with Completion Unverified and added completion diagnostics/settings for grace, verification mode, ignored task types, recurring crons, background alert mode, and text downgrade.
+- Added v1.7.1 regression tests for terminal/ambient task filtering, partial registries, the queued-notification race, agent-context Stop, parent/subagent state isolation, transition-only background alerts, migration, and the user's real “still running / waiting 15 minutes” messages.
+
 ## 1.7.0
 
 - Made `Stop` background-aware using current Claude Code `background_tasks` and `session_crons` payloads. **Done Fanfare now plays only for verified final completion** when both registries are present and empty.

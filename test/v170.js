@@ -38,25 +38,31 @@ const legacyStop={session_id:'s-legacy',hook_event_name:'Stop'};
 assert.strictEqual(t.stopCompletionState(pendingStop).kind,'background');
 assert.strictEqual(t.stopCompletionState(scheduledStop).kind,'background');
 assert.strictEqual(t.stopCompletionState(doneStop).kind,'finished');
-assert.strictEqual(t.stopCompletionState(legacyStop).kind,'unverified');
+assert.strictEqual(t.stopCompletionState(legacyStop,{completionVerificationMode:'auto'}).kind,'finished');
 
 // Critical regression: background work must never fall through to Main Work Finished.
+t.clearTestState();
 assert.strictEqual(
   t.classifyHook(pendingStop,settings({stop:true}),{strictCompletionVerification:true}),
   null,
   'background Stop must not fall through to Main Work Finished when Background alert is disabled'
 );
+t.clearTestState();
 let r=t.classifyHook(pendingStop,settings({stop:true,backgroundPending:true}),{strictCompletionVerification:true});
 assert(r && r.id==='backgroundPending','background Stop should classify as Background Work / Waiting');
 assert(/background task/i.test(r.reason));
 
+t.clearTestState();
 r=t.classifyHook(doneStop,settings({stop:true}),{strictCompletionVerification:true});
 assert(r && r.id==='stop','empty authoritative registries should classify as Main Work Finished');
 
 // Missing registry data is conservative by default.
+t.clearTestState();
 assert.strictEqual(t.classifyHook(legacyStop,settings({stop:true}),{strictCompletionVerification:true}),null);
+t.clearTestState();
 r=t.classifyHook(legacyStop,settings({stop:true,stopUnverified:true}),{strictCompletionVerification:true});
 assert(r && r.id==='stopUnverified');
+t.clearTestState();
 r=t.classifyHook(legacyStop,settings({stop:true}),{strictCompletionVerification:false});
 assert(r && r.id==='stop','legacy compatibility mode should allow Stop as Finished');
 
@@ -84,7 +90,7 @@ t.classifyHook({...pendingStop,session_id:'s-idle'},settings({}),{strictCompleti
 const idle={session_id:'s-idle',hook_event_name:'Notification',notification_type:'idle_prompt'};
 assert.strictEqual(t.classifyHook(idle,settings({notificationIdlePrompt:true,notification:true}),{}),null);
 r=t.classifyHook(idle,settings({backgroundPending:true,notificationIdlePrompt:true}),{});
-assert(r && r.id==='backgroundPending');
+assert.strictEqual(r,null,'idle_prompt should be suppressed instead of replaying Background');
 
 // Hook installation remains enabled-only, but virtual Stop and Notification profiles still install their underlying hook.
 let g=t.desiredHookGroups('http://127.0.0.1:47391/claude-code-sound-alerts/hook/tok',settings({backgroundPending:true}));

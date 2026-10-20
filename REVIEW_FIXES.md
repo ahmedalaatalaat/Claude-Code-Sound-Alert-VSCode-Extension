@@ -97,3 +97,9 @@ A real Windows PowerShell log exposed one host-specific gap not reproducible in 
 ## v1.7 background-aware completion
 
 Claude Code now reports `background_tasks` and `session_crons` on `Stop`. v1.7 treats those registries as authoritative completion state: non-empty means Background Work / Waiting, both present and empty means Main Work Finished, and missing registry data is Completion Unverified under the default strict-verification mode. `SubagentStop`, `TaskCompleted`, and notification-driven background completion are separate profiles and never map to the Done Fanfare. Current Notification subtypes and Pre/PostModelSwitch events are represented, and a dedicated v1.7 regression suite protects these semantics.
+
+## v1.7.1 — v1.7 completion review
+
+Addressed H1–H4 and M1–M6 from `CODE_REVIEW_v1.7.0.md`: grace-window cancellation on self-resume, registry status/type filtering, Auto/Strict/Legacy compatibility, downgrade-only waiting text, agent-context Stop suppression, parent/subagent state isolation, transition-only background sounds, v1.7 migration, internal silent state hooks, and session listener pinning. The local hook path is unified through `handleHookLocally`, completion debounce is session-aware, routed handlers acknowledge before classification, and the UI now explains the mutually exclusive Stop outcomes.
+
+Review notes that no longer apply to the packaged source: the current Claude Code hook reference now documents `background_tasks`/`session_crons` entry fields; the generated media tree contains no duplicate root `question.wav`/`finished.wav` copies, so no dead-weight duplicate media is packaged. User-supplied large WAVs are preserved byte-for-byte rather than down-sampled.

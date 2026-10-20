@@ -1,8 +1,8 @@
-# Claude Code Sound Alerts v1.7.0
+# Claude Code Sound Alerts v1.7.1
 
 A VS Code extension that plays configurable sound alerts for Claude Code lifecycle events.
 
-Version 1.7.0 updates completion detection for current Claude Code background execution. `Stop` is no longer treated as automatically meaning all work is finished: the extension checks Claude's `background_tasks` and `session_crons` registries and reserves the Done Fanfare for verified final completion.
+Version 1.7.1 hardens completion detection for current Claude Code background execution and known upstream edge cases. A `Stop` is only a Finished candidate after filtering terminal/ambient entries, checking one-shot wakeups, applying an optional waiting-language downgrade, and surviving a short continuation grace window. The Done Fanfare is never used for individual subagents or tasks.
 
 ## Defaults
 
@@ -13,7 +13,7 @@ On a fresh install only two alerts are enabled:
 
 The control panel also places **Background Work / Waiting** beside them as a primary state, but it starts **Off**. Individual agent completion also starts Off. Use the **Minimal**, **Recommended**, or **Everything** presets, or enable individual events in the control panel.
 
-## What v1.7 changes
+## What v1.7.1 changes
 
 - `Stop` is classified as **Main Work Finished**, **Background Work / Waiting**, or **Completion Unverified**.
 - A Stop with any `background_tasks` or `session_crons` entry can never trigger the Done Fanfare.
@@ -109,7 +109,7 @@ The UI represents the current Claude Code hook lifecycle, including:
 - PostToolBatch
 - PermissionDenied
 - Notification subtypes (permission/idle/agent/quota) plus an optional catch-all Notification
-- SubagentStart / SubagentStop (Agent Finished)
+- SubagentStart / SubagentStop (Agent Finished; never Main Work Finished)
 - TaskCreated / TaskCompleted
 - Stop / StopFailure with background-aware final-completion classification
 - TeammateIdle
@@ -152,19 +152,31 @@ The extension preserves unrelated Claude hook handlers.
 
 ## Completion semantics
 
-Current Claude Code includes `background_tasks` and `session_crons` on `Stop` so hooks can distinguish a truly completed session turn from one paused waiting for background work to wake it again. Sound Alerts uses those fields directly; it does **not** inspect phrases such as “still running” in Claude's natural-language response.
+Claude Code 2.1.145+ can include `background_tasks` and `session_crons` on `Stop`/`SubagentStop`. Current Claude Code documents task fields such as `id`, `type`, `status`, `description`, `command`, `agent_type`, `server`, `tool`, and `name`, plus cron fields including `id`, `schedule`, `recurring`, and `prompt`. Sound Alerts treats these registries as the primary completion signal, but v1.7.1 adds defenses for known upstream inconsistencies.
 
-- arrays present + both empty → **Main Work Finished**
-- either array contains entries → **Background Work / Waiting**
-- registry fields unavailable → **Completion Unverified** when strict verification is enabled
+For each main-agent `Stop`, exactly one completion state is selected:
 
-`SubagentStop`, `TaskCompleted`, and background-session notifications are never promoted to Main Work Finished.
+- blocking running/pending tasks or a one-shot scheduled wakeup → **Background Work / Waiting**
+- no blocking work, but registry data cannot be trusted under the selected verification mode → **Completion Unverified**
+- no blocking work and no downgrade signal → **Main Work Finished candidate**, delayed by the grace window before the Done Fanfare plays
+
+The default **Auto** verification mode uses compatibility behavior until a session proves that it supplies authoritative registry data; after that, missing registry fields are treated as Unverified. **Strict** always requires registry evidence. **Legacy** allows Stop to become a Finished candidate without registry evidence.
+
+Terminal background statuses (`completed`, `failed`, `killed`, `stopped`, `cancelled`, etc.) are ignored. `monitor_ws` is ignored by default as an ambient watcher; additional task types can be configured in the control panel. `teammate` remains blocking by default because ignoring all teammates could reintroduce false Done sounds while a teammate is genuinely working. Recurring crons are non-blocking by default and can be made blocking with an advanced toggle.
+
+A Finished candidate is delayed by **Finished grace** (2,000 ms by default). Claude-started continuation turns also emit `UserPromptSubmit`, so that event is installed silently as an internal state hook whenever completion tracking is active. A same-session continuation cancels the pending Finished sound.
+
+The optional waiting-language heuristic is downgrade-only: phrases such as “still running”, “waiting for”, “will report when they finish”, or “in about 15 minutes” can turn a Finished candidate into Background / Waiting, but text can never promote a Stop to Finished.
+
+`Stop` events carrying `agent_id` are never treated as main completion. `SubagentStop`, `TaskCompleted`, and `agent_completed` notifications remain separate profiles. `agent_completed` is currently documented as a terminal Agent View notification rather than a dependable VS Code completion signal.
+
+Known Claude Code upstream issues can still affect the registry itself. v1.7.1 specifically mitigates the queued background-notification race (an empty Stop immediately followed by Claude's own continuation turn) with the grace window, and ambient watcher entries with status/type filtering. Use **Open Log** and the **Last Stop** diagnostic in Advanced settings to see why a Stop was classified.
 
 ## Multi-window listener routing
 
 Every VS Code window owns its own localhost listener. The default port range starts at `47391`; later windows select the next free port automatically.
 
-Claude hooks point to one active router endpoint. The router forwards an incoming event to one healthy listener, preferring a VS Code workspace that contains Claude's current `cwd`, so the same alert is not played by every open window.
+Claude hooks point to one active router endpoint. The router forwards an incoming event to one healthy listener, preferring a VS Code workspace that contains Claude's current `cwd`. Once a `session_id` is seen, v1.7.1 pins that session to the same listener while it remains healthy so completion state does not jump between windows when cwd changes.
 
 If the router-owning window closes, another window can take over the configured router port. Takeover is guarded and binds the replacement listener before the previous listener is dropped.
 

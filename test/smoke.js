@@ -71,12 +71,12 @@ assert.strictEqual(t.hasStoredEventSettingsFromInspection({globalValue:{}}), fal
 assert.strictEqual(t.hasStoredEventSettingsFromInspection({globalValue:{stop:{enabled:true}}}), true);
 assert.strictEqual(t.hasStoredEventSettingsFromInspection({workspaceValue:{askUserQuestion:{enabled:true}}}), true);
 
-// Minimal/default hook install is exactly Question + Finished.
+// Minimal/default sounds are Question + Finished, plus silent internal state hooks for reliable completion tracking.
 const settings = Object.fromEntries(t.EVENT_DEFS.map(d => [d.id, { enabled:false }]));
 settings.askUserQuestion = { enabled:true };
 settings.stop = { enabled:true };
 const groups = t.desiredHookGroups('http://127.0.0.1:47391/claude-code-sound-alerts/hook/token', settings);
-assert.deepStrictEqual(Object.keys(groups).sort(), ['PreToolUse','Stop']);
+assert.deepStrictEqual(Object.keys(groups).sort(), ['PreToolUse','Stop','SubagentStart','SubagentStop','TeammateIdle','UserPromptSubmit']);
 assert.strictEqual(groups.PreToolUse[0].matcher, 'AskUserQuestion');
 assert.strictEqual(groups.PreToolUse[0].hooks[0].timeout, 2);
 
@@ -121,7 +121,7 @@ t.pcmWavInfo(t.scalePcmWav(extPcm, 125));
 
 // Manifest sanity checks for the stability/security release.
 const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
-assert.strictEqual(pkg.version, '1.7.0');
+assert.strictEqual(pkg.version, '1.7.1');
 assert.deepStrictEqual(pkg.activationEvents, ['onStartupFinished']);
 assert.strictEqual(pkg.contributes.configuration.properties['claudeSoundAlerts.serverPort'].scope, 'machine');
 assert.strictEqual(pkg.contributes.configuration.properties['claudeSoundAlerts.eventSettings'].scope, 'application');
