@@ -1,32 +1,35 @@
-# Claude Code Sound Alerts v1.7.2
+# Claude Code Sound Alerts v1.7.3
 
 A VS Code extension that plays configurable sound alerts for Claude Code lifecycle events.
 
-Version 1.7.2 tightens the v1.7 background-aware completion engine around current Claude Code edge cases. Finished candidates are grace-delayed and ordered by receive timestamp, self-resume turns stay inside one background chain, recurring `/loop` Stops are a separate silent-by-default outcome, terminal/ambient task filters run before conservative unknown-status blocking, and waiting-language downgrades use a much narrower closing-text heuristic.
+Version 1.7.3 is a correctness and Windows-latency pass over the v1.7 background-aware completion engine. It keeps the core rule strict: **Done Fanfare must not claim that Claude is finished while known work is still active.** The release removes the unsafe default teammate-count inference, narrows which events can cancel a valid Finished candidate, makes the Windows silent-state relay prefer `curl.exe`, expands safe self-resume recognition, and removes synchronous filesystem work from ordinary local hook handling.
 
 ## Defaults
 
 On a fresh install only two alerts are enabled:
 
 - **Ask User Question** — Question Chime
-- **Main Work Finished** — Done Fanfare, only after the candidate survives completion classification and the grace window
+- **Main Work Finished** — Done Fanfare, only after completion classification and the grace window
 
-**Background Work / Waiting**, **Recurring Loop Iteration**, **Completion Unverified**, and individual **Agent Finished** alerts all start **Off**. Use the **Minimal**, **Recommended**, or **Everything** presets, or enable individual events in the control panel.
+**Background Work / Waiting**, **Recurring Loop Iteration**, **Completion Unverified**, and individual **Agent Finished** alerts all start **Off**.
 
-## What v1.7.2 changes
+## What v1.7.3 changes
 
-- **Finished ordering is race-safe.** Each incoming hook is timestamped before asynchronous routing. A Finished candidate is suppressed if newer same-session activity was already received, even when processing happens out of order.
-- **Background chains survive Claude self-resume turns.** Machine-injected `<task-notification>` prompts no longer reset transition-only Background suppression, so a multi-agent chain does not beep once per agent completion. A real user prompt starts a new chain.
-- **Waiting-language detection is narrower.** Only the last two closing sentences are scanned; user-directed waits, negated phrases such as “nothing is still running,” and generic code descriptions such as “when they finish” no longer downgrade ordinary final responses.
-- **Explicit background opt-outs win before status checks.** Ambient flags, ignored task types, artifact watchers, and reconstructed idle teammates can be ignored even when Claude reports an unfamiliar status such as `idle` or `waiting`. Unknown unignored statuses still block conservatively.
-- **Recurring crons are a separate Stop outcome.** `/loop` and other recurring schedules never fall through to Main Work Finished. The new **Recurring Loop Iteration** alert is Off by default; the existing “recurring crons count as pending” option can instead treat them as Background / Waiting.
-- **Teammate reconstruction is safer.** When Claude's teammate background-task id does not match `TeammateIdle.agent_id`, the extension can use the count of reconstructed idle teammate names to ignore at most that many otherwise-unmatched teammate entries. Unknown extra teammates remain blocking.
-- **Silent state hooks fail quietly outside VS Code.** Internal-only `UserPromptSubmit`, `SubagentStart`, `SubagentStop`, and `TeammateIdle` tracking uses the asynchronous command relay when their own sounds are disabled, reducing plain-terminal hook-error noise. Audible versions still use direct HTTP.
-- **Cross-window retry dedupe is stronger.** Routed events receive one stable id before routing and use a short-lived shared dedupe marker in extension global storage, so retries cannot produce duplicate sounds in another VS Code window.
-- **Legacy migration is safer.** Future migrations map the old `strictCompletionVerification=true` toggle to **Auto**, not Strict. Existing v1.7.1 users whose Strict value may have come from that migration get a one-time choice instead of having an intentional setting silently overwritten.
-- **Compatibility warnings skip Legacy mode** and are remembered per reported Claude version when a version field is available.
-- **Unknown cron payload shapes block conservatively** rather than being treated as finished.
-- Added a v1.7.2 regression suite covering the new text-negative cases, real self-resume chains, unknown statuses, recurring loops, teammate-id mismatch, out-of-order receive processing, silent state-hook transports, and packaging hygiene.
+- **Teammate completion is conservative again.** The uncertain count-only `TeammateIdle` fallback is now **Off by default**. Direct id/name idle evidence is still used, but idle evidence is invalidated whenever a new lead turn starts because that turn may re-task a teammate without a new `SubagentStart`. An advanced opt-in setting can restore count-only matching for users who prefer fewer false negatives.
+- **Valid Finished candidates survive unrelated events.** `TeammateIdle`, `auth_success`, and other non-continuation notifications no longer update the timestamp used to suppress Finished. Only events that can actually continue work cancel/defer completion.
+- **Windows self-resume cancellation is faster.** Silent state hooks use a lightweight `cmd.exe` relay that prefers Windows' built-in `curl.exe`; PowerShell remains a UTF-8 fallback. The log records the receive-time gap when a self-resume cancels a Finished candidate so the grace period can be tuned from real data.
+- **Waiting-language matching is clause-aware.** Negation is checked only in the current clause, so `Not done yet: the test suite is still running` remains Background while `nothing is still running` stays Finished. Additional high-confidence patterns cover CI/build waits, `nohup` background work, and “I'll check back once it completes.”
+- **More machine-generated turns preserve the same background chain.** `<teammate-message>`, `<agent-message>`, cross-session messages, wake-up markers, and supported `source`/`origin` values are treated as self-resumes instead of new user work.
+- **Cross-window dedupe no longer performs synchronous disk I/O for every local hook.** Shared marker files are written asynchronously only for actually forwarded events; ordinary local events stay in memory.
+- **Responsive Primary Alerts UI.** Primary cards use auto-fit layout and their controls wrap instead of overflowing in mid-width VS Code panels.
+- **Packaging hygiene is enforced twice.** The source tree contains no root `media/*.wav` copies and `.vscodeignore` also excludes accidental root WAVs if they reappear.
+- Added the v1.7.3 regression suite covering re-tasked teammates, unrelated post-Stop events, clause-scoped negation, additional waiting phrases, teammate/system self-resumes, Windows relay URL extraction/UTF-8 behavior, responsive layout, and packaging hygiene.
+
+## Completion safety notes
+
+- Claude does not currently expose a universally reliable correlation key between every `background_tasks[type=teammate]` entry and every `TeammateIdle` event. v1.7.3 therefore prefers a possible **missed Done sound** over a false Done sound when teammate identity is uncertain. The experimental count fallback is available but disabled by default.
+- Waiting-language detection is intentionally **downgrade-only** and conservative. It catches explicit high-confidence phrases; it is not intended to infer every possible external/remote job description. Structured Claude task state remains the primary signal.
+- `SessionEnd` still cancels a pending Finished candidate. Closing/clearing a session is not proof that background work completed, so playing Done on SessionEnd would violate the extension's main invariant.
 
 ## What v1.6.3 fixes
 
@@ -183,7 +186,7 @@ Known Claude Code upstream issues can still affect the registry itself. The grac
 
 ### Behavior when VS Code is closed
 
-Claude hooks in `~/.claude/settings.json` also apply to terminal Claude sessions. v1.7.2 uses fail-silent asynchronous command relays for internal-only state hooks when their sounds are disabled, which avoids most extra hook-error notices outside VS Code. The core `Stop` hook remains direct HTTP because final-completion timing and audio delivery depend on the live extension listener; if Claude runs while no VS Code listener exists, that one managed HTTP hook can still report a non-blocking connection error.
+Claude hooks in `~/.claude/settings.json` also apply to terminal Claude sessions. v1.7.3 uses fail-silent asynchronous command relays for internal-only state hooks when their sounds are disabled; on Windows the relay prefers `curl.exe` and falls back to UTF-8 PowerShell, which reduces both hook-error noise and cancellation latency outside the VS Code panel. The core `Stop` hook remains direct HTTP because final-completion timing and audio delivery depend on the live extension listener; if Claude runs while no VS Code listener exists, that one managed HTTP hook can still report a non-blocking connection error.
 
 ### SessionEnd during the grace window
 
@@ -264,7 +267,7 @@ The source package includes scripts for:
 
 - `npm run check` — JavaScript syntax check
 - `npm run lint` — ESLint
-- `npm test` — the smoke suite, the 31-shape JSONC regression suite, the third-review adversarial suite, and the v1.7 background-aware completion suite. Together they cover hook patch/install/uninstall idempotence, comment and CRLF preservation, all removal layouts, enabled-only hook generation, HTTP-hook timeouts, audio-process timeout behavior, stale Windows audio-lock recovery, bundled WAV validation, gain processing, and manifest invariants
+- `npm test` — the smoke suite, 31-shape JSONC suite, third-review suite, and v1.7.0/v1.7.1/v1.7.2/v1.7.3 completion/routing suites. Together they cover hook patch/install/uninstall idempotence, comment/CRLF preservation, background completion races, teammate safety, self-resume chains, recurring crons, waiting-text downgrades, Windows relay behavior, routed-event dedupe, audio-process timeouts, bundled WAV validation, gain processing, responsive control-panel invariants, and manifest/package hygiene
 
 Development dependencies are declared for VS Code types and ESLint. The packaged VSIX excludes development/test files.
 

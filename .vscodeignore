@@ -13,3 +13,5 @@ scripts/**
 *.zip
 media/icon-source.*
 REVIEW_FIXES.md
+
+media/*.wav

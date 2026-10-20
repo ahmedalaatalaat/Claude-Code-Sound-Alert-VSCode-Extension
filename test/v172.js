@@ -68,11 +68,12 @@ r=t.classifyHook(stop('loop3',[],[{id:'loop',recurring:true}]),settings({recurri
 assert(r&&r.id==='recurringCronIteration');
 assert.strictEqual(t.stopCompletionState(stop('bad-cron',[],['mystery cron'])).kind,'background');
 
-// N5: use reconstructed idle-teammate count even when background task ids do not match agent ids.
+// N5: direct teammate correlation stays conservative; count-only fallback is opt-in.
 t.clearTestState();
 t.updateSessionState({session_id:'team-real-shape',hook_event_name:'TeammateIdle',agent_id:'agent-uuid',teammate_name:'probe-two'});
 let state=t.getSessionState({session_id:'team-real-shape'},false);
-assert.strictEqual(t.stopCompletionState(stop('team-real-shape',[{id:'tk8gt4uh4',type:'teammate',status:'running',description:'Goal: open a DRAFT…'}],[]),{state}).kind,'finished');
+assert.strictEqual(t.stopCompletionState(stop('team-real-shape',[{id:'tk8gt4uh4',type:'teammate',status:'running',description:'Goal: open a DRAFT…'}],[]),{state}).kind,'background');
+assert.strictEqual(t.stopCompletionState(stop('team-real-shape',[{id:'tk8gt4uh4',type:'teammate',status:'running',description:'Goal: open a DRAFT…'}],[]),{state,teammateIdleCountFallback:true}).kind,'finished');
 assert.strictEqual(t.stopCompletionState(stop('team-one-busy',[{id:'t1',type:'teammate',status:'running'},{id:'t2',type:'teammate',status:'running'}],[]),{state}).kind,'background','one idle teammate cannot hide two teammate entries');
 t.updateSessionState({session_id:'team-real-shape',hook_event_name:'SubagentStart',agent_id:'busy-agent',agent_type:'busy-teammate'});
 state=t.getSessionState({session_id:'team-real-shape'},false);

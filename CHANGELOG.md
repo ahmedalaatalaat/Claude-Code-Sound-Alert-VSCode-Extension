@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.7.3
+
+- Disabled the unsafe teammate idle-count fallback by default; direct idle correlation remains conservative and all idle evidence is invalidated at each new lead turn so re-tasked teammates cannot be hidden by stale state.
+- Added an experimental `teammateIdleCountFallback` setting for users who explicitly prefer count-based teammate reconciliation.
+- Restricted `lastActivityAt` to genuine continuation events, so `TeammateIdle` and unrelated notifications after a final Stop no longer suppress a correct Finished sound.
+- Replaced the Windows silent-state PowerShell-first relay with a `cmd.exe` helper that prefers built-in `curl.exe`, always exits successfully, and uses an explicit UTF-8 PowerShell fallback when curl is unavailable.
+- Improved command-hook URL extraction for wrapped `cmd.exe` relay arguments.
+- Added cancellation-gap logging between the candidate Stop and a self-resume event.
+- Tightened clause-local negation and expanded high-confidence waiting-text detection for CI/build waits, `nohup` background jobs, and “check back once complete” phrasing.
+- Expanded self-resume recognition for teammate/agent/cross-session messages, wake-up messages, and supported `source`/`origin` fields.
+- Made shared routed-event dedupe asynchronous and limited shared filesystem markers to events that were actually forwarded between VS Code windows.
+- Made the Primary Alerts grid responsive and allowed primary controls to wrap at narrower widths.
+- Added `.vscodeignore` protection for accidental root `media/*.wav` duplicates.
+- Added v1.7.3 regression tests for R1–R10 review cases.
+
 ## 1.7.2
 
 - Tightened waiting-language downgrade detection to the last two closing sentences, with negation and user-directed-wait exclusions.

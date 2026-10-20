@@ -126,10 +126,13 @@ const TERMINAL_TASK_STATUSES = new Set(['completed','failed','killed','stopped',
 const WAITING_TEXT_PATTERNS = [
   /\bstill\s+(?:running|in progress|working|pending)\b/i,
   /\bwaiting\s+only\s+(?:on|for)\s+(?!you\b|your\b|the\s+user\b|confirmation\b|approval\b|input\b|feedback\b)[^.!?\n]{1,100}/i,
+  /\bwaiting\s+(?:on|for)\s+the\s+(?:ci(?:\s+pipeline)?|pipeline|build|run|suite|tests?|deploy(?:ment)?|job|benchmark)\b[^.!?\n]{0,120}/i,
   /\b(?:i(?:'|’)ll|i\s+will|we\s+will|will)\s+(?:report|notify|let\s+you\s+know|update\s+you)\b[^.!?\n]{0,140}\b(?:when|once|after)\b[^.!?\n]{0,100}\b(?:finish|finishes|complete|completes|done|ready)\b/i,
-  /\bbackground\s+(?:run|job|task|agent|agents|process|processes)\b[^.!?\n]{0,90}\b(?:is|are)?\s*(?:still\s+)?(?:running|in progress|pending)\b/i
+  /\b(?:i(?:'|’)ll|i\s+will)\s+check\s+back\b[^.!?\n]{0,120}\b(?:once|when|after)\b[^.!?\n]{0,80}\b(?:complete|completes|finish|finishes|done|ready)\b/i,
+  /\bbackground\s+(?:run|job|task|agent|agents|process|processes)\b[^.!?\n]{0,90}\b(?:is|are)?\s*(?:still\s+)?(?:running|in progress|pending)\b/i,
+  /\b(?:running|started|launched)\b[^.!?\n]{0,60}\bin\s+the\s+background\b[^.!?\n]{0,120}\b(?:nohup|results?|report|finish|complete|minutes?|hours?)\b/i
 ];
-const WAITING_NEGATION_RE = /\b(?:no\s+longer|nothing|none|not|isn['’]?t|aren['’]?t|wasn['’]?t|weren['’]?t|no)\b/i;
+const WAITING_CLAUSE_NEGATION_RE = /\b(?:no\s+longer|nothing(?:\s+(?:is|was))?|none|not|isn['’]?t|aren['’]?t|wasn['’]?t|weren['’]?t|no)\s+(?:\w+\s+){0,2}$/i;
 
 
 function cfg() { return vscode.workspace.getConfiguration('claudeSoundAlerts'); }
@@ -274,23 +277,34 @@ function forwardedEventId(body){
   return typeof body?._claude_sound_alerts_event_id==='string'&&body._claude_sound_alerts_event_id?body._claude_sound_alerts_event_id:null;
 }
 function routedDedupeDir(){return extensionContext?.globalStorageUri?.fsPath?path.join(extensionContext.globalStorageUri.fsPath,'routed-event-dedupe'):null;}
-function pruneSharedRoutedDedupe(now=Date.now()){
+async function pruneSharedRoutedDedupe(now=Date.now()){
   const dir=routedDedupeDir();if(!dir||now-lastSharedDedupePruneAt<ROUTED_EVENT_TTL_MS)return;lastSharedDedupePruneAt=now;
-  try{for(const name of fs.readdirSync(dir)){const file=path.join(dir,name);try{const st=fs.statSync(file);if(now-st.mtimeMs>ROUTED_EVENT_TTL_MS*2)fs.unlinkSync(file);}catch(_error){}}}catch(_error){}
+  try{
+    const names=await fs.promises.readdir(dir);
+    await Promise.all(names.map(async name=>{const file=path.join(dir,name);try{const st=await fs.promises.stat(file);if(now-st.mtimeMs>ROUTED_EVENT_TTL_MS*2)await fs.promises.unlink(file);}catch(_error){}}));
+  }catch(_error){}
 }
-function markSharedRoutedEvent(id,now=Date.now()){
+async function markSharedRoutedEvent(id,now=Date.now()){
   const dir=routedDedupeDir();if(!dir)return false;
-  try{fs.mkdirSync(dir,{recursive:true});pruneSharedRoutedDedupe(now);const safe=/^[a-f0-9]{8,64}$/i.test(id)?id:crypto.createHash('sha1').update(id).digest('hex');const file=path.join(dir,`${safe}.seen`);const fd=fs.openSync(file,'wx',0o600);try{fs.writeFileSync(fd,String(now));}finally{fs.closeSync(fd);}return false;}
-  catch(error){if(error?.code==='EEXIST')return true;log(`Shared routed-event dedupe unavailable: ${error?.message||error}`);return false;}
+  try{
+    await fs.promises.mkdir(dir,{recursive:true});
+    void pruneSharedRoutedDedupe(now);
+    const safe=/^[a-f0-9]{8,64}$/i.test(id)?id:crypto.createHash('sha1').update(id).digest('hex');
+    const file=path.join(dir,`${safe}.seen`),handle=await fs.promises.open(file,'wx',0o600);
+    try{await handle.writeFile(String(now),'utf8');}finally{await handle.close();}
+    return false;
+  }catch(error){if(error?.code==='EEXIST')return true;log(`Shared routed-event dedupe unavailable: ${error?.message||error}`);return false;}
 }
-function markRoutedEventSeen(body){
+async function markRoutedEventSeen(body){
   const id=forwardedEventId(body);if(!id)return false;
   const now=Date.now();if(routedEventSeen.has(id)){routedEventSeen.set(id,now);pruneRoutePins(now);return true;}
-  const sharedSeen=markSharedRoutedEvent(id,now);routedEventSeen.set(id,now);pruneRoutePins(now);return sharedSeen;
+  let sharedSeen=false;
+  if(body?._claude_sound_alerts_routed===1||body?._claude_sound_alerts_routed===true)sharedSeen=await markSharedRoutedEvent(id,now);
+  routedEventSeen.set(id,now);pruneRoutePins(now);return sharedSeen;
 }
 function forwardHook(port,body,token=listenerToken) {
   return new Promise(resolve=>{
-    const forwarded=ensureRoutingMetadata({...((body&&typeof body==='object')?body:{})});
+    const forwarded=ensureRoutingMetadata({...((body&&typeof body==='object')?body:{}),_claude_sound_alerts_routed:1});
     const raw=JSON.stringify(forwarded);
     const req=http.request({host:'127.0.0.1',port,path:`/${EXTENSION_TAG}/hook/${token}`,method:'POST',timeout:1500,agent:false,headers:{Host:`127.0.0.1:${port}`,'Content-Type':'application/json','Content-Length':Buffer.byteLength(raw),'X-Claude-Sound-Alerts-Routed':'1',Connection:'close'}},res=>{res.resume();res.on('end',()=>resolve(res.statusCode===204));});
     req.on('timeout',()=>{req.destroy();resolve(false);}); req.on('error',()=>resolve(false)); req.write(raw); req.end();
@@ -605,7 +619,7 @@ function pruneSessionStates(now=Date.now()){
 function getSessionState(body,create=true){
   const key=sessionKey(body);if(!key)return null;
   let state=sessionStates.get(key);
-  if(!state&&create){state={sessionId:key,promptId:null,status:'unknown',backgroundTasks:[],sessionCrons:[],activeAgents:new Map(),idleAgentIds:new Set(),idleAgentNames:new Set(),seenAuthoritativeStop:false,blockingSignature:'',lastStopKind:'unknown',backgroundChain:false,backgroundChainSignature:'',lastActivityAt:0,lastStopReceivedAt:0,updatedAt:Date.now()};sessionStates.set(key,state);}
+  if(!state&&create){state={sessionId:key,promptId:null,status:'unknown',backgroundTasks:[],sessionCrons:[],activeAgents:new Map(),idleAgentIds:new Map(),idleAgentNames:new Map(),seenAuthoritativeStop:false,blockingSignature:'',lastStopKind:'unknown',backgroundChain:false,backgroundChainSignature:'',lastActivityAt:0,lastTurnStartedAt:0,lastStopReceivedAt:0,updatedAt:Date.now()};sessionStates.set(key,state);}
   return state||null;
 }
 function completionVerificationMode(options={}){
@@ -626,12 +640,28 @@ function knownAmbientTask(entry){
   const text=[entry?.description,entry?.name,entry?.server,entry?.tool].map(v=>String(v||'')).join(' ').toLowerCase();
   return /artifact|live[ -]?update|monitor_ws|workspace\s+watch/.test(text);
 }
+function idleMarkerTime(collection,key){
+  if(!collection||!key)return 0;
+  if(collection instanceof Map)return Number(collection.get(key)||0);
+  if(collection instanceof Set)return collection.has(key)?Number.MAX_SAFE_INTEGER:0;
+  return 0;
+}
+function teammateIdleCountFallbackEnabled(options={}){
+  return options.teammateIdleCountFallback===undefined?cfg().get('teammateIdleCountFallback',false):!!options.teammateIdleCountFallback;
+}
 function blockingTasks(list,options={}){
   const ignored=ignoredBackgroundTaskTypes(options),out=[],state=options.state||null,entries=Array.isArray(list)?list:[];
-  const teammateEntryCount=entries.filter(e=>e&&typeof e==='object'&&taskType(e)==='teammate').length;
-  const idleTeammateCount=state?.idleAgentNames?.size||0;
-  const busyTeammateNames=new Set([...(state?.activeAgents?.values?.()||[])].map(v=>String(v?.agentType||'').trim().toLowerCase()).filter(Boolean).filter(n=>!state?.idleAgentNames?.has(n)));
-  let idleTeammateBudget=busyTeammateNames.size===0&&idleTeammateCount>=teammateEntryCount?idleTeammateCount:0;
+  const turnStartedAt=Number(state?.lastTurnStartedAt)||0;
+  const allowCountFallback=teammateIdleCountFallbackEnabled(options);
+  let idleTeammateBudget=0;
+  if(allowCountFallback&&state){
+    const nameTimes=state.idleAgentNames instanceof Map?[...state.idleAgentNames.values()]:[];
+    const idTimes=state.idleAgentIds instanceof Map?[...state.idleAgentIds.values()]:[];
+    idleTeammateBudget=Math.max(
+      nameTimes.filter(t=>Number(t)>=turnStartedAt).length,
+      idTimes.filter(t=>Number(t)>=turnStartedAt).length
+    );
+  }
   for(const entry of entries){
     if(!entry)continue;
     if(typeof entry!=='object'){out.push({id:'unknown',type:'unknown',status:'unknown',description:brief(entry,120)});continue;}
@@ -641,13 +671,12 @@ function blockingTasks(list,options={}){
     if(type==='teammate'&&state){
       const id=String(entry.id||'');
       const names=[entry.name,entry.agent_type].map(v=>String(v||'').trim().toLowerCase()).filter(Boolean);
-      const directIdle=(id&&state.idleAgentIds?.has(id))||names.some(n=>state.idleAgentNames?.has(n));
-      if(directIdle){if(idleTeammateBudget>0)idleTeammateBudget--;continue;}
-      // Claude's current teammate background entry often exposes only a task id and
-      // goal description, while TeammateIdle exposes teammate_name. When we have
-      // reconstructed N idle teammates but cannot correlate ids, safely ignore at
-      // most N otherwise-unmatched teammate entries and leave the rest blocking.
-      if(idleTeammateBudget>0){idleTeammateBudget--;continue;}
+      const idIdleAt=id?idleMarkerTime(state.idleAgentIds,id):0;const directIdle=(idIdleAt>0&&idIdleAt>=turnStartedAt)||names.some(n=>{const at=idleMarkerTime(state.idleAgentNames,n);return at>0&&at>=turnStartedAt;});
+      if(directIdle)continue;
+      // Count-only correlation is intentionally opt-in because Claude's teammate
+      // background-task id is not guaranteed to equal TeammateIdle.agent_id.
+      // Even when enabled, only idle observations from the current lead turn count.
+      if(allowCountFallback&&idleTeammateBudget>0){idleTeammateBudget--;continue;}
     }
     if(status&&TERMINAL_TASK_STATUSES.has(status))continue;
     // Known pending states block. Unknown/non-terminal states also block
@@ -685,8 +714,10 @@ function lastMessageTail(value,max=420){
   return tail.slice(-max);
 }
 function waitingMatchNegated(text,index){
-  const before=text.slice(Math.max(0,index-32),index);
-  return WAITING_NEGATION_RE.test(before);
+  const before=String(text||'').slice(0,index);
+  const clauseStart=Math.max(before.lastIndexOf('.'),before.lastIndexOf(';'),before.lastIndexOf(':'),before.lastIndexOf('—'),before.lastIndexOf(','),before.lastIndexOf('\n'),before.lastIndexOf('!'),before.lastIndexOf('?'))+1;
+  const clause=before.slice(clauseStart).slice(-64);
+  return WAITING_CLAUSE_NEGATION_RE.test(clause);
 }
 function waitingTextMatch(body,options={}){
   const enabled=options.textHeuristicDowngrade===undefined?cfg().get('textHeuristicDowngrade',true):!!options.textHeuristicDowngrade;
@@ -727,29 +758,42 @@ function pendingWorkReason(body,completion=null){
 function hookReceivedAt(body){const n=Number(body?._claude_sound_alerts_received_at);return Number.isFinite(n)&&n>0?n:Date.now();}
 function isSelfResumePrompt(body){
   const prompt=String(body?.prompt||'');
-  const origin=body?.origin&&typeof body.origin==='object'?String(body.origin.kind||body.origin.type||''):'';
-  return /^\s*<task-notification[\s>]/i.test(prompt)||/task[-_ ]notification/i.test(origin);
+  const source=String(body?.source||'').trim().toLowerCase();
+  const origin=body?.origin&&typeof body.origin==='object'?String(body.origin.kind||body.origin.type||'').trim().toLowerCase():'';
+  if(['system','loop_wakeup','schedule_wakeup','poll_event','task-notification','peer'].includes(source))return true;
+  if(['task-notification','peer','system','loop_wakeup','schedule_wakeup','poll_event'].includes(origin))return true;
+  return /^\s*(?:<task-notification[\s>]|<teammate-message[\s>]|<agent-message[\s>]|<cross-session-message[\s>]|Another Claude session sent a message:|Heartbeat:|Wake-up (?:timer|check)\b|Stop hook feedback:)/i.test(prompt);
 }
 function updateSessionState(body,completion=null){
   const event=body?.hook_event_name,state=getSessionState(body,true);if(!state)return null;
   const receivedAt=hookReceivedAt(body);
-  state.updatedAt=Date.now();state.lastActivityAt=Math.max(Number(state.lastActivityAt)||0,receivedAt);
+  state.updatedAt=Date.now();
+  if(continuationCancelsFinished(body))state.lastActivityAt=Math.max(Number(state.lastActivityAt)||0,receivedAt);
   if(typeof body?.prompt_id==='string'&&body.prompt_id)state.promptId=body.prompt_id;
-  if(body?.agent_id&&event!=='TeammateIdle')state.idleAgentIds.delete(String(body.agent_id));
-  if(event==='SessionStart'){state.status='active';state.backgroundChain=false;state.backgroundChainSignature='';}
+  if(body?.agent_id&&event!=='TeammateIdle')state.idleAgentIds?.delete?.(String(body.agent_id));
+  if(event==='SessionStart'){state.status='active';state.backgroundChain=false;state.backgroundChainSignature='';state.lastTurnStartedAt=receivedAt;}
   else if(event==='UserPromptSubmit'){
     const selfResume=isSelfResumePrompt(body);
-    if(!selfResume){state.backgroundChain=false;state.backgroundChainSignature='';}
+    state.lastTurnStartedAt=receivedAt;
+    // Any new lead turn can re-task a teammate, including machine-injected turns.
+    // Discard prior idle evidence so stale TeammateIdle observations can never
+    // suppress a teammate that became busy again without SubagentStart.
+    state.idleAgentIds?.clear?.();state.idleAgentNames?.clear?.();
+    if(!selfResume){
+      state.backgroundChain=false;state.backgroundChainSignature='';
+      const prompt=String(body?.prompt||'');
+      if(!body?.source&&/^\s*<[a-z][\w-]*(?:\s|>)/i.test(prompt))log(`UserPromptSubmit begins with an unrecognised system-like tag; treating it conservatively as a new user turn: ${brief(prompt,80)}`);
+    }
     state.status='working';
   }
   else if(event==='SubagentStart'){
-    if(body.agent_id)state.activeAgents.set(String(body.agent_id),{agentType:brief(body.agent_type,80),startedAt:Date.now()});
-    const agentName=String(body.agent_type||'').trim().toLowerCase();if(agentName)state.idleAgentNames.delete(agentName);
+    if(body.agent_id)state.activeAgents.set(String(body.agent_id),{agentType:brief(body.agent_type,80),startedAt:receivedAt});
+    const agentName=String(body.agent_type||'').trim().toLowerCase();if(agentName)state.idleAgentNames?.delete?.(agentName);
   }
   else if(event==='SubagentStop'){if(body.agent_id)state.activeAgents.delete(String(body.agent_id));}
   else if(event==='TeammateIdle'){
-    if(body.agent_id)state.idleAgentIds.add(String(body.agent_id));
-    const teammateName=String(body.teammate_name||body.agent_type||'').trim().toLowerCase();if(teammateName)state.idleAgentNames.add(teammateName);
+    if(body.agent_id)state.idleAgentIds?.set?.(String(body.agent_id),receivedAt);
+    const teammateName=String(body.teammate_name||body.agent_type||'').trim().toLowerCase();if(teammateName)state.idleAgentNames?.set?.(teammateName,receivedAt);
   }
   else if(event==='Stop'){
     const st=completion||stopCompletionState(body,{state});
@@ -794,7 +838,7 @@ function classifyHook(body,settings=allEventSettings(),options={}){
 function eventDedupeKey(id,body){const sid=sessionKey(body)||'global';if(['stop','backgroundPending','recurringCronIteration','stopUnverified'].includes(id))return`${id}:${sid}`;if(id==='subagentStop')return`${id}:${sid}:${body?.agent_id||'agent'}`;if(id==='taskCompleted')return`${id}:${sid}:${body?.task_id||'task'}`;return id;}
 function shouldPlay(id,body=null){if(!cfg().get('enabled',true))return false;const debounce=Math.round(clamp(cfg().get('debounceMs',650),0,10000));const key=eventDedupeKey(id,body),now=Date.now(),last=lastPlayedAt.get(key)||0;if(now-last<debounce)return false;lastPlayedAt.set(key,now);return true;}
 async function playProfile(id,reason,force=false,overrides={},body=null){const def=EVENT_MAP.get(id);if(!def)return;const setting=eventSetting(id);if(!setting)return;if(!force&&(!setting.enabled||!shouldPlay(id,body)))return;const sound=overrides.sound||setting.sound;const volume=overrides.volume===undefined?setting.volume:Math.round(clamp(overrides.volume,0,200));const repeat=overrides.repeat===undefined?setting.repeat:Math.round(clamp(overrides.repeat,1,5));const file=soundPathFor(sound);log(`${def.label}: ${reason} | sound=${sound} volume=${volume}% repeat=${repeat} | ${file}`);if(cfg().get('showVisualNotifications',false)&&!force)vscode.window.showInformationMessage(`${def.label}: ${reason}`);try{await enqueuePlayback(()=>playAudioFile(file,volume,repeat),def.label);}catch(error){const message=error?.message||String(error);log(`Unable to play sound: ${message}`);vscode.window.showWarningMessage(`Claude Sound Alerts could not play audio: ${message}`,'Open Log').then(c=>{if(c==='Open Log')output.show(true);});}}
-function cancelDeferredFinished(body,why='session continued'){const key=completionKey(body),pending=pendingFinished.get(key);if(!pending)return false;clearTimeout(pending.timer);pendingFinished.delete(key);log(`Finished cancelled (${why}); session continued.`);return true;}
+function cancelDeferredFinished(body,why='session continued'){const key=completionKey(body),pending=pendingFinished.get(key);if(!pending)return false;clearTimeout(pending.timer);pendingFinished.delete(key);const at=hookReceivedAt(body),gap=Number.isFinite(Number(pending.stopReceivedAt))?at-Number(pending.stopReceivedAt):null;log(`Finished cancelled (${why}); session continued${gap!==null&&gap>=0?` after ${gap} ms`:''}.`);return true;}
 function deferFinished(body,result,options={}){
   const key=completionKey(body);cancelDeferredFinished(body,'new completion candidate');
   const ms=Math.round(clamp(options.ms===undefined?cfg().get('finishedGraceMs',2500):options.ms,0,15000));
@@ -824,7 +868,7 @@ async function maybeWarnCompatibility(body,completion){
   void vscode.window.showWarningMessage("Claude Sound Alerts could not verify background-task state for this Stop. Auto compatibility mode is being used; update Claude Code if this persists.",'Open Claude Alerts').then(choice=>{if(choice==='Open Claude Alerts')void openControlPanel();});
 }
 async function handleHookLocally(body,options={}){
-  if(markRoutedEventSeen(body)){log(`Duplicate routed hook ignored: ${brief(body?.hook_event_name)||'unknown'}`);return true;}
+  if(await markRoutedEventSeen(body)){log(`Duplicate routed hook ignored: ${brief(body?.hook_event_name)||'unknown'}`);return true;}
   if(continuationCancelsFinished(body))cancelDeferredFinished(body,body?.hook_event_name||body?.notification_type||'session activity');
   if(body?.hook_event_name==='Stop'&&body?.agent_id){cancelDeferredFinished(body,'agent-context Stop');log(`Ignored Stop from agent context ${brief(body.agent_id,32)}; main Finished cannot fire from a subagent/teammate hook.`);return true;}
   let completion=null;
@@ -929,22 +973,23 @@ async function stopServer(invalidate=true,removeRegistration=true){
 
 function hookHandler(url){ return {type:'http',url,timeout:2}; }
 function claudeSettingsPath(){ return path.join(os.homedir(),'.claude','settings.json'); }
-function relayScriptPath(){ const base=relayStoragePathOverride || extensionContext?.globalStorageUri?.fsPath; if(!base)throw new Error('Extension global storage is not initialized.'); return path.join(base, process.platform==='win32' ? `${RELAY_TAG}.ps1` : `${RELAY_TAG}.sh`); }
+function relayScriptPath(platform=process.platform){ const base=relayStoragePathOverride || extensionContext?.globalStorageUri?.fsPath; if(!base)throw new Error('Extension global storage is not initialized.'); return path.join(base, platform==='win32' ? `${RELAY_TAG}.cmd` : `${RELAY_TAG}.sh`); }
+function windowsRelayScript(){return `@echo off\r\nsetlocal\r\nset "CLAUDE_SOUND_ALERTS_URL=%~1"\r\nwhere curl.exe >nul 2>&1\r\nif %errorlevel%==0 (\r\n  curl.exe -sS --max-time 3 -X POST -H "Content-Type: application/json; charset=utf-8" --data-binary @- "%CLAUDE_SOUND_ALERTS_URL%" >nul 2>&1\r\n  exit /b 0\r\n)\r\npowershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$ErrorActionPreference='SilentlyContinue'; [Console]::InputEncoding=[Text.Encoding]::UTF8; $r=[IO.StreamReader]::new([Console]::OpenStandardInput(),[Text.Encoding]::UTF8,$true); $body=$r.ReadToEnd(); try { $bytes=[Text.Encoding]::UTF8.GetBytes($body); Invoke-WebRequest -UseBasicParsing -Uri $env:CLAUDE_SOUND_ALERTS_URL -Method Post -ContentType 'application/json; charset=utf-8' -Body $bytes -TimeoutSec 3 | Out-Null } catch {}; exit 0" >nul 2>&1\r\nexit /b 0\r\n`;}
 async function ensureRelayScript(){
   const file=relayScriptPath(); await fs.promises.mkdir(path.dirname(file),{recursive:true});
   if(process.platform==='win32') {
-    const text = `param([string]$Url)\n$ErrorActionPreference = 'SilentlyContinue'\n$body = [Console]::In.ReadToEnd()\ntry { Invoke-WebRequest -UseBasicParsing -Uri $Url -Method Post -ContentType 'application/json' -Body $body -TimeoutSec 3 | Out-Null } catch {}\nexit 0\n`;
+    const text = windowsRelayScript();
     await fs.promises.writeFile(file,text,'utf8');
   } else {
-    const text = `#!/bin/sh\nurl="$1"\nif command -v curl >/dev/null 2>&1; then\n  exec curl -sS --max-time 3 -X POST -H 'Content-Type: application/json' --data-binary @- "$url" >/dev/null 2>&1\nelif command -v python3 >/dev/null 2>&1; then\n  exec python3 -c 'import sys,urllib.request; u=sys.argv[1]; d=sys.stdin.buffer.read(); urllib.request.urlopen(urllib.request.Request(u,data=d,headers={"Content-Type":"application/json"},method="POST"),timeout=3).read()' "$url" >/dev/null 2>&1\nelif command -v python >/dev/null 2>&1; then\n  exec python -c 'import sys,urllib.request; u=sys.argv[1]; d=sys.stdin.buffer.read(); urllib.request.urlopen(urllib.request.Request(u,data=d,headers={"Content-Type":"application/json"},method="POST"),timeout=3).read()' "$url" >/dev/null 2>&1\nelse\n  cat >/dev/null\nfi\nexit 0\n`;
+    const text = `#!/bin/sh\nurl="$1"\nif command -v curl >/dev/null 2>&1; then\n  curl -sS --max-time 3 -X POST -H 'Content-Type: application/json; charset=utf-8' --data-binary @- "$url" >/dev/null 2>&1 || true\nelif command -v python3 >/dev/null 2>&1; then\n  python3 -c 'import sys,urllib.request; u=sys.argv[1]; d=sys.stdin.buffer.read(); urllib.request.urlopen(urllib.request.Request(u,data=d,headers={"Content-Type":"application/json; charset=utf-8"},method="POST"),timeout=3).read()' "$url" >/dev/null 2>&1 || true\nelif command -v python >/dev/null 2>&1; then\n  python -c 'import sys,urllib.request; u=sys.argv[1]; d=sys.stdin.buffer.read(); urllib.request.urlopen(urllib.request.Request(u,data=d,headers={"Content-Type":"application/json; charset=utf-8"},method="POST"),timeout=3).read()' "$url" >/dev/null 2>&1 || true\nelse\n  cat >/dev/null\nfi\nexit 0\n`;
     await fs.promises.writeFile(file,text,{encoding:'utf8',mode:0o700}); try{await fs.promises.chmod(file,0o700);}catch(_error){}
   }
   return file;
 }
-function commandRelayHandler(url){
-  const file=relayScriptPath();
-  return process.platform==='win32'
-    ? {type:'command',command:'powershell.exe',args:['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',file,url],timeout:10,async:true}
+function commandRelayHandler(url,platform=process.platform){
+  const file=relayScriptPath(platform);
+  return platform==='win32'
+    ? {type:'command',command:'cmd.exe',args:['/d','/s','/c',`call "${file}" "${url}"`],timeout:10,async:true}
     : {type:'command',command:'sh',args:[file,url],timeout:10,async:true};
 }
 function completionStateHooksNeeded(settings){return !!(settings.stop?.enabled||settings.backgroundPending?.enabled||settings.recurringCronIteration?.enabled||settings.stopUnverified?.enabled||settings.notificationIdlePrompt?.enabled);}
@@ -969,14 +1014,11 @@ function handlerUrl(handler){
   if(!handler || typeof handler!=='object') return null;
   if(handler.type==='http' && typeof handler.url==='string') return handler.url;
   if(handler.type==='command') {
+    const pattern=/https?:\/\/127\.0\.0\.1:\d+\/claude-code-sound-alerts\/hook\/[a-z0-9]+/i;
     if(Array.isArray(handler.args)) {
-      const candidate=handler.args.find(v=>typeof v==='string' && v.includes(`/${EXTENSION_TAG}/hook/`));
-      if(candidate) return candidate;
+      for(const value of handler.args){if(typeof value!=='string')continue;const match=value.match(pattern);if(match)return match[0];}
     }
-    if(typeof handler.command==='string') {
-      const match=handler.command.match(/https?:\/\/127\.0\.0\.1:\d+\/claude-code-sound-alerts\/hook\/[^\s"']+/);
-      if(match) return match[0];
-    }
+    if(typeof handler.command==='string') {const match=handler.command.match(pattern);if(match)return match[0];}
   }
   return null;
 }
@@ -1519,7 +1561,7 @@ async function getUiState(){
   const hs=await hookInstallStatus(); const brokerPort=hs.targetPort||null;
   const settings=allEventSettings();
   return {
-    enabled:cfg().get('enabled',true), visualNotifications:cfg().get('showVisualNotifications',false), completionVerificationMode:completionVerificationMode(), finishedGraceMs:Math.round(clamp(cfg().get('finishedGraceMs',2500),0,15000)), textHeuristicDowngrade:cfg().get('textHeuristicDowngrade',true)!==false, backgroundAlertMode:String(cfg().get('backgroundAlertMode','transition')), ignoredBackgroundTaskTypes:(Array.isArray(cfg().get('ignoredBackgroundTaskTypes',['monitor_ws']))?cfg().get('ignoredBackgroundTaskTypes',['monitor_ws']):['monitor_ws']).map(String), recurringCronsCountAsPending:cfg().get('recurringCronsCountAsPending',false)===true, repeatGapMs:Math.round(clamp(cfg().get('repeatGapMs',150),0,3000)),
+    enabled:cfg().get('enabled',true), visualNotifications:cfg().get('showVisualNotifications',false), completionVerificationMode:completionVerificationMode(), finishedGraceMs:Math.round(clamp(cfg().get('finishedGraceMs',2500),0,15000)), textHeuristicDowngrade:cfg().get('textHeuristicDowngrade',true)!==false, backgroundAlertMode:String(cfg().get('backgroundAlertMode','transition')), ignoredBackgroundTaskTypes:(Array.isArray(cfg().get('ignoredBackgroundTaskTypes',['monitor_ws']))?cfg().get('ignoredBackgroundTaskTypes',['monitor_ws']):['monitor_ws']).map(String), teammateIdleCountFallback:cfg().get('teammateIdleCountFallback',false)===true, recurringCronsCountAsPending:cfg().get('recurringCronsCountAsPending',false)===true, repeatGapMs:Math.round(clamp(cfg().get('repeatGapMs',150),0,3000)),
     hooks:hs, listenerActive:listenerIsActive(), listenerMode, listenerDetail, listenerPort, brokerPort, listenerBasePort:getBasePort(), listenerPortCount:getPortCount(), platform:process.platform,
     events:EVENT_DEFS.map(d=>({...d,setting:settings[d.id]})), categories:CATEGORIES, sounds:allSoundOptions(), watchedFiles:cfg().get('watchedFiles',[])||[], activePreset:activePresetName(settings), lastStopDiagnostic
   };
@@ -1567,7 +1609,7 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .section-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;margin:22px 0 10px}
 .section-head h2{font-size:16px;margin:0;font-weight:650}
 .section-caption{font-size:12px;color:var(--vscode-descriptionForeground);margin-top:3px}
-.primary-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px}
+.primary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr));gap:14px}
 .eventgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 .event{border-radius:12px;padding:15px;min-width:0}
 .event.primary{border-color:var(--vscode-focusBorder);background:color-mix(in srgb,var(--vscode-sideBar-background) 92%,var(--vscode-focusBorder) 8%)}
@@ -1586,7 +1628,7 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .switch input:checked{background:var(--vscode-button-background);border-color:var(--vscode-button-background)}
 .switch input:checked:after{left:17px;background:var(--vscode-button-foreground)}
 .switch input:disabled{cursor:not-allowed}
-.controlgrid{display:grid;grid-template-columns:minmax(150px,1.4fr) minmax(160px,1fr) 92px;gap:12px;align-items:end}
+.controlgrid{display:grid;grid-template-columns:minmax(150px,1.4fr) minmax(160px,1fr) 92px;gap:12px;align-items:end}.event.primary .controlgrid{grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}
 .field label{display:block;font-size:12px;margin-bottom:5px;color:var(--vscode-descriptionForeground)}
 .field select,.field input[type=range]{width:100%}
 select,input[type=text],input[type=number]{color:var(--vscode-input-foreground);background:var(--vscode-input-background);border:1px solid var(--vscode-input-border,var(--vscode-panel-border));border-radius:7px;padding:7px 9px}
@@ -1654,6 +1696,7 @@ details.more[open]>summary:before{transform:rotate(90deg)}
       <div class="footerline"><label>Finished grace <input id="finishedGrace" type="number" min="0" max="15000" step="100" style="width:86px"> ms</label><label>Background sound <select id="backgroundMode"><option value="transition">On transition only</option><option value="changes">When pending set changes</option><option value="everyStop">Every pending Stop</option></select></label></div>
       <div class="footerline" style="margin-top:9px"><label><input id="textDowngrade" type="checkbox"> Downgrade waiting-language to Background</label><label><input id="recurringCrons" type="checkbox"> Recurring crons count as pending</label></div>
       <div class="field" style="margin-top:10px"><label for="ignoredTaskTypes">Ignored ambient task types (comma-separated)</label><input id="ignoredTaskTypes" type="text" placeholder="monitor_ws" aria-label="Ignored background task types"></div>
+      <div class="footerline" style="margin-top:9px"><label><input id="teammateCountFallback" type="checkbox"> Experimental idle-teammate count fallback</label></div>
       <div id="lastStop" class="note" style="margin-top:10px"></div>
     </div>
     <div>
@@ -1710,14 +1753,14 @@ function render(){
   else hookText='⚠ Hooks incomplete ('+hs.installed+'/'+hs.total+')';
   $('hookStatus').textContent=hookText;$('hookStatus').className='pill '+(hookOk?'ok':'warn');$('hookStatus').title=hs.error||hs.targetUrl||'';
   const lm=state.listenerMode||'inactive';$('listenerStatus').textContent=lm==='owned'?'● Listener '+state.listenerPort+(state.brokerPort===state.listenerPort?' — router':''):lm==='disabled'?'○ Listener disabled':'○ Listener inactive';$('listenerStatus').className='pill '+(state.listenerActive?'ok':'warn');$('listenerStatus').title=state.listenerDetail||'';
-  $('enabled').checked=!!state.enabled;$('visual').checked=!!state.visualNotifications;$('gap').value=state.repeatGapMs;$('watchedFiles').value=(state.watchedFiles||[]).join(', ');$('completionMode').value=state.completionVerificationMode||'auto';$('finishedGrace').value=state.finishedGraceMs??2500;$('backgroundMode').value=state.backgroundAlertMode||'transition';$('textDowngrade').checked=state.textHeuristicDowngrade!==false;$('recurringCrons').checked=!!state.recurringCronsCountAsPending;$('ignoredTaskTypes').value=(state.ignoredBackgroundTaskTypes||[]).join(', ');const diag=state.lastStopDiagnostic;$('lastStop').textContent=diag?('Last Stop: '+String(diag.kind||'unknown').toUpperCase()+' · '+diag.backgroundCount+' blocking task(s) · '+diag.cronCount+' one-shot wakeup(s)'+(diag.recurringCronCount?' · '+diag.recurringCronCount+' recurring cron(s)':'')+(diag.textMatch?' · waiting text: '+diag.textMatch:'')+(diag.compatibility?' · compatibility mode':'')+(diag.teammateOnly?' · only teammate entries are blocking; if they are idle, consider adding teammate to Ignored task types':'')):'No Stop classification recorded in this VS Code window yet.';
+  $('enabled').checked=!!state.enabled;$('visual').checked=!!state.visualNotifications;$('gap').value=state.repeatGapMs;$('watchedFiles').value=(state.watchedFiles||[]).join(', ');$('completionMode').value=state.completionVerificationMode||'auto';$('finishedGrace').value=state.finishedGraceMs??2500;$('backgroundMode').value=state.backgroundAlertMode||'transition';$('textDowngrade').checked=state.textHeuristicDowngrade!==false;$('recurringCrons').checked=!!state.recurringCronsCountAsPending;$('teammateCountFallback').checked=!!state.teammateIdleCountFallback;$('ignoredTaskTypes').value=(state.ignoredBackgroundTaskTypes||[]).join(', ');const diag=state.lastStopDiagnostic;$('lastStop').textContent=diag?('Last Stop: '+String(diag.kind||'unknown').toUpperCase()+' · '+diag.backgroundCount+' blocking task(s) · '+diag.cronCount+' one-shot wakeup(s)'+(diag.recurringCronCount?' · '+diag.recurringCronCount+' recurring cron(s)':'')+(diag.textMatch?' · waiting text: '+diag.textMatch:'')+(diag.compatibility?' · compatibility mode':'')+(diag.teammateOnly?' · only teammate entries are blocking; if they are idle, consider adding teammate to Ignored task types':'')):'No Stop classification recorded in this VS Code window yet.';
   const currentCat=saved.category||$('category').value;$('category').innerHTML='<option value="">All categories</option>'+(state.categories||[]).map(c=>'<option value="'+esc(c)+'">'+esc(c)+'</option>').join('');if((state.categories||[]).includes(currentCat))$('category').value=currentCat;
   $('search').value=saved.search||$('search').value||'';document.querySelector('details.more').open=!!saved.advanced;
   const primaryOrder=['askUserQuestion','backgroundPending','recurringCronIteration','stopUnverified','stop'];const primaryIds=new Set(primaryOrder);const primary=(state.events||[]).filter(e=>primaryIds.has(e.id)).sort((a,b)=>primaryOrder.indexOf(a.id)-primaryOrder.indexOf(b.id));const others=(state.events||[]).filter(e=>!primaryIds.has(e.id));
   $('primaryEvents').innerHTML=primary.map(e=>eventCard(e,true)).join('');$('events').innerHTML=others.map(e=>eventCard(e,false)).join('');renderLibrary();renderPreset();bindCards();applyFilter();requestAnimationFrame(()=>window.scrollTo(0,Number(saved.scrollY)||0));
 }
 
-$('installHooks').addEventListener('click',()=>post('installHooks'));$('removeHooks').addEventListener('click',()=>post('removeHooks'));$('openLog').addEventListener('click',()=>post('openLog'));$('addSound').addEventListener('click',()=>post('addSound'));document.querySelectorAll('[data-preset]').forEach(b=>b.addEventListener('click',()=>{b.disabled=true;post('applyPreset',{name:b.dataset.preset});setTimeout(()=>{b.disabled=false},500)}));$('enabled').addEventListener('change',e=>post('setGlobal',{key:'enabled',value:e.target.checked}));$('visual').addEventListener('change',e=>post('setGlobal',{key:'showVisualNotifications',value:e.target.checked}));$('completionMode').addEventListener('change',e=>post('setGlobal',{key:'completionVerificationMode',value:e.target.value}));$('finishedGrace').addEventListener('change',e=>post('setGlobal',{key:'finishedGraceMs',value:Number(e.target.value)}));$('backgroundMode').addEventListener('change',e=>post('setGlobal',{key:'backgroundAlertMode',value:e.target.value}));$('textDowngrade').addEventListener('change',e=>post('setGlobal',{key:'textHeuristicDowngrade',value:e.target.checked}));$('recurringCrons').addEventListener('change',e=>post('setGlobal',{key:'recurringCronsCountAsPending',value:e.target.checked}));$('ignoredTaskTypes').addEventListener('change',e=>post('setGlobal',{key:'ignoredBackgroundTaskTypes',value:String(e.target.value||'').split(',').map(v=>v.trim()).filter(Boolean)}));$('gap').addEventListener('change',e=>post('setGlobal',{key:'repeatGapMs',value:Number(e.target.value)}));$('watchedFiles').addEventListener('change',e=>post('setWatchedFiles',{value:e.target.value}));$('search').addEventListener('input',()=>{applyFilter();saveViewState()});$('category').addEventListener('change',()=>{applyFilter();saveViewState()});document.querySelector('details.more').addEventListener('toggle',saveViewState);let scrollTimer;window.addEventListener('scroll',()=>{clearTimeout(scrollTimer);scrollTimer=setTimeout(saveViewState,150)});window.addEventListener('message',ev=>{const m=ev.data;if(m.type==='state'){saveViewState();state=m.state;render()}if(m.type==='eventSetting'){updateEventView(m.id,m.setting,m.activePreset)}if(m.type==='toast'){$('toast').textContent=m.text||'';if(m.text)setTimeout(()=>{if($('toast').textContent===m.text)$('toast').textContent=''},3000)}});render()})();
+$('installHooks').addEventListener('click',()=>post('installHooks'));$('removeHooks').addEventListener('click',()=>post('removeHooks'));$('openLog').addEventListener('click',()=>post('openLog'));$('addSound').addEventListener('click',()=>post('addSound'));document.querySelectorAll('[data-preset]').forEach(b=>b.addEventListener('click',()=>{b.disabled=true;post('applyPreset',{name:b.dataset.preset});setTimeout(()=>{b.disabled=false},500)}));$('enabled').addEventListener('change',e=>post('setGlobal',{key:'enabled',value:e.target.checked}));$('visual').addEventListener('change',e=>post('setGlobal',{key:'showVisualNotifications',value:e.target.checked}));$('completionMode').addEventListener('change',e=>post('setGlobal',{key:'completionVerificationMode',value:e.target.value}));$('finishedGrace').addEventListener('change',e=>post('setGlobal',{key:'finishedGraceMs',value:Number(e.target.value)}));$('backgroundMode').addEventListener('change',e=>post('setGlobal',{key:'backgroundAlertMode',value:e.target.value}));$('textDowngrade').addEventListener('change',e=>post('setGlobal',{key:'textHeuristicDowngrade',value:e.target.checked}));$('recurringCrons').addEventListener('change',e=>post('setGlobal',{key:'recurringCronsCountAsPending',value:e.target.checked}));$('teammateCountFallback').addEventListener('change',e=>post('setGlobal',{key:'teammateIdleCountFallback',value:e.target.checked}));$('ignoredTaskTypes').addEventListener('change',e=>post('setGlobal',{key:'ignoredBackgroundTaskTypes',value:String(e.target.value||'').split(',').map(v=>v.trim()).filter(Boolean)}));$('gap').addEventListener('change',e=>post('setGlobal',{key:'repeatGapMs',value:Number(e.target.value)}));$('watchedFiles').addEventListener('change',e=>post('setWatchedFiles',{value:e.target.value}));$('search').addEventListener('input',()=>{applyFilter();saveViewState()});$('category').addEventListener('change',()=>{applyFilter();saveViewState()});document.querySelector('details.more').addEventListener('toggle',saveViewState);let scrollTimer;window.addEventListener('scroll',()=>{clearTimeout(scrollTimer);scrollTimer=setTimeout(saveViewState,150)});window.addEventListener('message',ev=>{const m=ev.data;if(m.type==='state'){saveViewState();state=m.state;render()}if(m.type==='eventSetting'){updateEventView(m.id,m.setting,m.activePreset)}if(m.type==='toast'){$('toast').textContent=m.text||'';if(m.text)setTimeout(()=>{if($('toast').textContent===m.text)$('toast').textContent=''},3000)}});render()})();
 </script></body></html>`;
 }
 
@@ -1739,14 +1782,14 @@ async function openControlPanel(){
       }
       if(msg.action==='preview'){await playProfile(msg.id,'Control panel preview',true,{sound:msg.sound,volume:msg.volume,repeat:msg.repeat});controlPanel?.webview.postMessage({type:'toast',text:'Preview played.'});return;}
       if(msg.action==='setGlobal'){
-        const allowed=new Set(['enabled','showVisualNotifications','completionVerificationMode','finishedGraceMs','textHeuristicDowngrade','backgroundAlertMode','ignoredBackgroundTaskTypes','recurringCronsCountAsPending','repeatGapMs']); if(!allowed.has(msg.key))return;
+        const allowed=new Set(['enabled','showVisualNotifications','completionVerificationMode','finishedGraceMs','textHeuristicDowngrade','backgroundAlertMode','ignoredBackgroundTaskTypes','teammateIdleCountFallback','recurringCronsCountAsPending','repeatGapMs']); if(!allowed.has(msg.key))return;
         let value=msg.value;
         if(msg.key==='repeatGapMs')value=Math.round(clamp(value,0,3000));
         else if(msg.key==='finishedGraceMs')value=Math.round(clamp(value,0,15000));
         else if(msg.key==='completionVerificationMode')value=['auto','strict','legacy'].includes(String(value))?String(value):'auto';
         else if(msg.key==='backgroundAlertMode')value=['transition','changes','everyStop'].includes(String(value))?String(value):'transition';
         else if(msg.key==='ignoredBackgroundTaskTypes')value=[...new Set((Array.isArray(value)?value:[]).map(v=>String(v).trim().toLowerCase()).filter(Boolean))];
-        else if(['enabled','showVisualNotifications','textHeuristicDowngrade','recurringCronsCountAsPending'].includes(msg.key))value=!!value;
+        else if(['enabled','showVisualNotifications','textHeuristicDowngrade','teammateIdleCountFallback','recurringCronsCountAsPending'].includes(msg.key))value=!!value;
         await cfg().update(msg.key,value,vscode.ConfigurationTarget.Global); scheduleUiState();if(['enabled'].includes(msg.key))updateStatusBar();if(['completionVerificationMode','ignoredBackgroundTaskTypes','recurringCronsCountAsPending'].includes(msg.key))scheduleHookReconcileIfShapeChanged(400);return;
       }
       if(msg.action==='setWatchedFiles'){
@@ -1822,7 +1865,7 @@ async function deactivate(){
   await stopServer(true,false);
 }
 const testApi=process.env.CLAUDE_SOUND_ALERTS_TEST==='1' ? {
-  EVENT_DEFS, PRESET_GROUPS, OLD_RECOMMENDED_V16, parseClaudeSettingsText, patchTopLevelHooks, pcmWavInfo, scalePcmWav, audioPlaybackTimeoutMs, spawnCaptured, windowsAudioHostScript, stopCompletionState, blockingTasks, blockingCrons, knownAmbientTask, waitingTextMatch, candidateProfiles, classifyHook, updateSessionState, getSessionState, pendingWorkReason, backgroundAlertShouldFire, deferFinished, cancelDeferredFinished, completionVerificationMode, migrateV171EventSettingsObject, migrateV172Completion, NOTIFICATION_PROFILE_BY_TYPE, handleHookLocally, ensureRoutingMetadata, isSelfResumePrompt, hookReceivedAt, lastMessageTail, cronPartitions,
+  EVENT_DEFS, PRESET_GROUPS, OLD_RECOMMENDED_V16, parseClaudeSettingsText, patchTopLevelHooks, pcmWavInfo, scalePcmWav, audioPlaybackTimeoutMs, spawnCaptured, windowsAudioHostScript, stopCompletionState, blockingTasks, blockingCrons, knownAmbientTask, waitingTextMatch, candidateProfiles, classifyHook, updateSessionState, getSessionState, pendingWorkReason, backgroundAlertShouldFire, deferFinished, cancelDeferredFinished, completionVerificationMode, migrateV171EventSettingsObject, migrateV172Completion, NOTIFICATION_PROFILE_BY_TYPE, handleHookLocally, ensureRoutingMetadata, isSelfResumePrompt, hookReceivedAt, lastMessageTail, cronPartitions, commandRelayHandler, handlerUrl, waitingMatchNegated, windowsRelayScript,
   desiredHookGroups, desiredHookSignatures, ourHookSignatures, hookSignature, hasStoredEventSettingsFromInspection,
   setTestStoragePath: value => { relayStoragePathOverride=value?path.resolve(String(value)):null; }, clearTestState:()=>{for(const p of pendingFinished.values())try{clearTimeout(p.timer);}catch(_error){}pendingFinished.clear();sessionStates.clear();sessionRoutePins.clear();routedEventSeen.clear();lastSharedDedupePruneAt=0;lastPlayedAt.clear();lastStopDiagnostic=null;}
 } : null;

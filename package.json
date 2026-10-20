@@ -2,7 +2,7 @@
   "name": "claude-code-sound-alerts",
   "displayName": "Claude Code Sound Alerts",
   "description": "Background-aware Claude Code sound alerts with verified final completion, agent/background states, multi-window routing, per-event sounds, volume boost, repeats, and presets.",
-  "version": "1.7.2",
+  "version": "1.7.3",
   "publisher": "local",
   "license": "MIT",
   "engines": {
@@ -164,6 +164,12 @@
           "description": "Background task types treated as ambient/non-blocking for final-completion detection. Terminal-status entries are always ignored. Add teammate only if you explicitly want idle/running teammates not to block Finished.",
           "scope": "application"
         },
+        "claudeSoundAlerts.teammateIdleCountFallback": {
+          "type": "boolean",
+          "default": false,
+          "description": "Experimental: when Claude does not provide a reliable teammate id/name correlation, allow a same-turn TeammateIdle count to suppress otherwise-unmatched teammate background entries. Off by default because a stale idle observation could otherwise cause a false Finished alert.",
+          "scope": "application"
+        },
         "claudeSoundAlerts.recurringCronsCountAsPending": {
           "type": "boolean",
           "default": false,
@@ -216,7 +222,7 @@
   "scripts": {
     "check": "node --check extension.js",
     "lint": "eslint extension.js",
-    "test": "node test/smoke.js && node test/review2.js && node test/review3.js && node test/v170.js && node test/v171.js && node test/v172.js"
+    "test": "node test/smoke.js && node test/review2.js && node test/review3.js && node test/v170.js && node test/v171.js && node test/v172.js && node test/v173.js"
   },
   "devDependencies": {
     "@types/vscode": "^1.90.0",
