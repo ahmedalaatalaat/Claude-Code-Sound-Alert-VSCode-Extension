@@ -1,17 +1,28 @@
-# Claude Code Sound Alerts v1.6.3
+# Claude Code Sound Alerts v1.7.0
 
 A VS Code extension that plays configurable sound alerts for Claude Code lifecycle events.
 
-Version 1.6.3 is a Windows audio hotfix on top of v1.6.2. It fixes first-run playback on Windows PowerShell hosts where `Add-Type -OutputAssembly` writes the cached WinMM helper DLL without loading the generated `ClaudeSoundNative` type into that same process.
+Version 1.7.0 updates completion detection for current Claude Code background execution. `Stop` is no longer treated as automatically meaning all work is finished: the extension checks Claude's `background_tasks` and `session_crons` registries and reserves the Done Fanfare for verified final completion.
 
 ## Defaults
 
 On a fresh install only two alerts are enabled:
 
 - **Ask User Question** — Question Chime
-- **Claude Finished** — Done Fanfare
+- **Main Work Finished** — Done Fanfare, only after Claude reports no active background tasks and no session-scoped scheduled wakeups
 
-Every other alert starts **Off**. Use the **Minimal**, **Recommended**, or **Everything** presets, or enable individual events in the control panel.
+The control panel also places **Background Work / Waiting** beside them as a primary state, but it starts **Off**. Individual agent completion also starts Off. Use the **Minimal**, **Recommended**, or **Everything** presets, or enable individual events in the control panel.
+
+## What v1.7 changes
+
+- `Stop` is classified as **Main Work Finished**, **Background Work / Waiting**, or **Completion Unverified**.
+- A Stop with any `background_tasks` or `session_crons` entry can never trigger the Done Fanfare.
+- A Stop is considered truly finished only when both arrays are present and empty.
+- **Verify final completion** is enabled by default. If an older Claude Code build omits the task-registry arrays, Finished stays silent and the optional Completion Unverified profile may be used instead. Disable verification only if you intentionally want legacy `Stop = Finished` behavior.
+- `SubagentStop` is now **Agent Finished**, completely separate from Main Work Finished. It is Off by default so a multi-agent run does not produce a completion sound for every worker unless you opt in.
+- Modern `Notification` subtypes are separately configurable: background agent needs input, agent completed, idle reminder, permission reminder, and quota auto-resume states.
+- `PreModelSwitch` and `PostModelSwitch` are included in the event catalog.
+- The extension keeps lightweight in-memory session state using Claude `session_id`, `prompt_id`, `agent_id`, `agent_type`, background task data, and scheduled wakeups for classification/diagnostics. No conversation content is sent to an external service.
 
 ## What v1.6.3 fixes
 
@@ -69,12 +80,12 @@ Each event has independent:
 - Repeat count from **1–5×**
 - Preview
 
-The two primary alerts — **Question** and **Finished** — stay at the top of the panel.
+The three primary states — **Question**, **Background / Waiting**, and **Finished** — stay at the top of the panel. Question and Finished are the only two enabled by default.
 
 ### Presets
 
-- **Minimal** — Question + Finished only
-- **Recommended** — Question + Finished plus important permission, failure, subagent, task, and MCP-input alerts
+- **Minimal** — Question + verified Finished only
+- **Recommended** — Question + verified Finished + Background / Waiting + important permission/failure/task/MCP alerts + Background Agent Needs Input. Individual Agent Finished remains Off to avoid multi-agent sound storms
 - **Everything** — every safe observable event
 - **Custom** — shown when manual event choices do not match one of the presets
 
@@ -97,10 +108,10 @@ The UI represents the current Claude Code hook lifecycle, including:
 - PostToolUseFailure
 - PostToolBatch
 - PermissionDenied
-- Notification
-- SubagentStart / SubagentStop
+- Notification subtypes (permission/idle/agent/quota) plus an optional catch-all Notification
+- SubagentStart / SubagentStop (Agent Finished)
 - TaskCreated / TaskCompleted
-- Stop / StopFailure
+- Stop / StopFailure with background-aware final-completion classification
 - TeammateIdle
 - ConfigChange
 - CwdChanged / DirectoryAdded
@@ -108,6 +119,7 @@ The UI represents the current Claude Code hook lifecycle, including:
 - WorktreeCreate (displayed but safety-protected)
 - WorktreeRemove
 - PreCompact / PostCompact
+- PreModelSwitch / PostModelSwitch
 - SessionEnd
 - Elicitation / ElicitationResult
 
@@ -138,6 +150,16 @@ If an older release stored `claudeSoundAlerts.eventSettings` in workspace/folder
 
 The extension preserves unrelated Claude hook handlers.
 
+## Completion semantics
+
+Current Claude Code includes `background_tasks` and `session_crons` on `Stop` so hooks can distinguish a truly completed session turn from one paused waiting for background work to wake it again. Sound Alerts uses those fields directly; it does **not** inspect phrases such as “still running” in Claude's natural-language response.
+
+- arrays present + both empty → **Main Work Finished**
+- either array contains entries → **Background Work / Waiting**
+- registry fields unavailable → **Completion Unverified** when strict verification is enabled
+
+`SubagentStop`, `TaskCompleted`, and background-session notifications are never promoted to Main Work Finished.
+
 ## Multi-window listener routing
 
 Every VS Code window owns its own localhost listener. The default port range starts at `47391`; later windows select the next free port automatically.
@@ -165,7 +187,9 @@ Claude event data is not intentionally transmitted to an external service.
 The extension ships with:
 
 - Question Chime
+- Question Ping
 - Done Fanfare
+- Agent Finished
 - Error Impact
 - Soft Bell
 - Bright Ping
@@ -211,7 +235,7 @@ The source package includes scripts for:
 
 - `npm run check` — JavaScript syntax check
 - `npm run lint` — ESLint
-- `npm test` — the smoke suite plus the 31-shape JSONC regression suite and third-review adversarial suite, including a Windows compile-then-load audio-host regression assertion. Together they cover hook patch/install/uninstall idempotence, comment and CRLF preservation, all removal layouts, enabled-only hook generation, HTTP-hook timeouts, audio-process timeout behavior, stale Windows audio-lock recovery, bundled WAV validation, gain processing, and manifest invariants
+- `npm test` — the smoke suite, the 31-shape JSONC regression suite, the third-review adversarial suite, and the v1.7 background-aware completion suite. Together they cover hook patch/install/uninstall idempotence, comment and CRLF preservation, all removal layouts, enabled-only hook generation, HTTP-hook timeouts, audio-process timeout behavior, stale Windows audio-lock recovery, bundled WAV validation, gain processing, and manifest invariants
 
 Development dependencies are declared for VS Code types and ESLint. The packaged VSIX excludes development/test files.
 

@@ -83,11 +83,16 @@ assert.strictEqual(groups.PreToolUse[0].hooks[0].timeout, 2);
 // All bundled alert WAVs are supported PCM and gain scaling remains valid.
 const soundsDir = path.join(__dirname, '..', 'media', 'sounds');
 const wavs = fs.readdirSync(soundsDir).filter(n => n.endsWith('.wav'));
-assert(wavs.length >= 13, 'expected bundled sound library');
+assert(wavs.length >= 15, 'expected bundled sound library including question/agent-finished sounds');
 for (const name of wavs) {
   const buf = fs.readFileSync(path.join(soundsDir, name));
   const info = t.pcmWavInfo(buf);
   assert([8,16,24,32].includes(info.bits), `${name}: unsupported bits`);
+}
+for (const def of t.EVENT_DEFS) {
+  if (def.sound && !String(def.sound).startsWith('user-')) {
+    assert(fs.existsSync(path.join(soundsDir, `${def.sound}.wav`)), `${def.id}: missing bundled default sound ${def.sound}.wav`);
+  }
 }
 const sample = fs.readFileSync(path.join(soundsDir, 'question-chime.wav'));
 const boosted = t.scalePcmWav(sample, 150);
@@ -116,7 +121,7 @@ t.pcmWavInfo(t.scalePcmWav(extPcm, 125));
 
 // Manifest sanity checks for the stability/security release.
 const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
-assert.strictEqual(pkg.version, '1.6.3');
+assert.strictEqual(pkg.version, '1.7.0');
 assert.deepStrictEqual(pkg.activationEvents, ['onStartupFinished']);
 assert.strictEqual(pkg.contributes.configuration.properties['claudeSoundAlerts.serverPort'].scope, 'machine');
 assert.strictEqual(pkg.contributes.configuration.properties['claudeSoundAlerts.eventSettings'].scope, 'application');

@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.7.0
+
+- Made `Stop` background-aware using current Claude Code `background_tasks` and `session_crons` payloads. **Done Fanfare now plays only for verified final completion** when both registries are present and empty.
+- Added a separate **Background Work / Waiting** profile for turns that stop while background shell work, subagents, monitors, workflows, teammates, cloud sessions, MCP tasks, or scheduled wakeups remain. It is Off by default.
+- Added conservative **Completion Unverified** handling for Stop payloads that do not expose task-registry state. `Verify final completion` is On by default; users can disable it for legacy Claude Code compatibility.
+- Separated **Agent Finished** from main completion and added the supplied `finished.wav` as a built-in sound. Individual `SubagentStop` events can no longer be mistaken for overall completion.
+- Added session-aware state keyed by `session_id`, retaining `prompt_id`, active agent IDs/types, parent background tasks, scheduled wakeups, and the latest high-level session state.
+- Split modern Claude `Notification` types into optional profiles for permission reminders, idle reminders, background-agent input, background-session completion, and quota auto-resume outcomes.
+- Added current `PreModelSwitch` and `PostModelSwitch` lifecycle alerts.
+- Updated hook generation so virtual Stop and Notification profiles still install only the minimum underlying hooks/matchers required by enabled alerts.
+- Added Stop classification diagnostics to the Output log, including background-task and scheduled-wakeup counts.
+- Redesigned Primary Alerts to show **Question**, **Background / Waiting**, and **Finished**; only Question and Finished remain enabled by default.
+- Added a v1.7 regression suite proving that pending background work cannot trigger Main Work Finished, subagent/task completion cannot trigger Done Fanfare, notification subtypes route correctly, and legacy/unverified Stop behavior is conservative by default.
+- Updated the shipped media set to preserve the supplied icon and all 15 supplied WAV assets, including `question.wav` and `finished.wav`.
+
 ## 1.6.3
 
 - Fixed first-run Windows audio playback when the WinMM helper assembly is compiled for the first time. `Add-Type -OutputAssembly` can save the DLL without loading `ClaudeSoundNative` into the current Windows PowerShell session; the extension now explicitly verifies the type and loads the freshly compiled DLL before calling `PlaySound`.
