@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.7.2
+
+- Tightened waiting-language downgrade detection to the last two closing sentences, with negation and user-directed-wait exclusions.
+- Added a persistent background-chain state so Claude task-notification self-resumes do not retrigger transition-only Background sounds.
+- Reordered background-task filtering so explicit ambient/ignored/idle-teammate opt-outs apply before conservative unknown-status blocking.
+- Added **Recurring Loop Iteration** as a separate Stop outcome; recurring `/loop` work can no longer fall through to Main Work Finished.
+- Added receive timestamps before asynchronous routing and a second grace-window activity check to suppress out-of-order false Finished sounds.
+- Improved teammate reconstruction for current Claude payloads whose background task id does not match `TeammateIdle.agent_id`; unmatched extras remain blocking.
+- Switched silent internal state hooks to fail-silent async command relays when their own alert sound is disabled.
+- Assigned routed event ids once before retry and added shared cross-window routed-event dedupe markers.
+- Unknown/non-object cron entries now block conservatively.
+- Future legacy-toggle migration maps `strictCompletionVerification=true` to Auto. Existing v1.7.1 Strict users are asked before any migration change.
+- Compatibility warnings are skipped in Legacy mode and remembered per reported Claude version when available.
+- Increased the default Finished grace from 2000 ms to 2500 ms to give async self-resume relays more headroom.
+- Added v1.7.2 integration/regression tests for negative text examples, self-resume chains, unknown statuses, recurring crons, teammate-id mismatch, out-of-order hook processing, silent hook transports, and media packaging hygiene.
+
 ## 1.7.1
 
 - Added a configurable Finished grace window (2 seconds by default) and silently installed `UserPromptSubmit`/agent state hooks whenever completion tracking is active, preventing the Done Fanfare during Claude's immediate self-resume race after queued background-task notifications.

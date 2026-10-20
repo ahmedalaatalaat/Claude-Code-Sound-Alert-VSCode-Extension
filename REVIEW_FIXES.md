@@ -102,4 +102,25 @@ Claude Code now reports `background_tasks` and `session_crons` on `Stop`. v1.7 t
 
 Addressed H1–H4 and M1–M6 from `CODE_REVIEW_v1.7.0.md`: grace-window cancellation on self-resume, registry status/type filtering, Auto/Strict/Legacy compatibility, downgrade-only waiting text, agent-context Stop suppression, parent/subagent state isolation, transition-only background sounds, v1.7 migration, internal silent state hooks, and session listener pinning. The local hook path is unified through `handleHookLocally`, completion debounce is session-aware, routed handlers acknowledge before classification, and the UI now explains the mutually exclusive Stop outcomes.
 
-Review notes that no longer apply to the packaged source: the current Claude Code hook reference now documents `background_tasks`/`session_crons` entry fields; the generated media tree contains no duplicate root `question.wav`/`finished.wav` copies, so no dead-weight duplicate media is packaged. User-supplied large WAVs are preserved byte-for-byte rather than down-sampled.
+v1.7.1 deliberately did not assume teammate background-task ids were reliably equal to `TeammateIdle.agent_id`; v1.7.2 improves this by using reconstructed idle-teammate counts when direct correlation is unavailable, while keeping unmatched entries blocking.
+
+Packaging note: the release source/VSIX keeps WAV assets only under `media/sounds/`; the v1.7.2 test suite fails if root `media/*.wav` duplicates are present. User-supplied large WAVs are preserved byte-for-byte rather than down-sampled.
+
+Documentation note: Claude Code's public description of background-task/cron payload shapes has changed over time. v1.7.2 no longer claims a fixed documented schema; unknown task/cron shapes are handled conservatively.
+
+
+## v1.7.2 — fresh v1.7.1 review remediation
+
+- **N1 fixed:** waiting-text matching is narrower, scans only the closing two sentences, excludes user-directed waits and nearby negation, and retains downgrade-only semantics.
+- **N2 fixed:** background-chain state persists across machine-injected task-notification prompts; a real user prompt starts a new chain.
+- **N3 fixed:** ambient/ignored/idle-teammate opt-outs run before unknown-status conservative blocking.
+- **N4 fixed:** recurring crons have a dedicated `recurringCronIteration` Stop outcome and never fall through to Main Finished.
+- **N5 mitigated safely:** direct id/name matching is retained, plus an idle-teammate count budget for current payloads that expose unrelated task ids. Unmatched teammate entries remain blocking because Claude does not provide a universal correlation key.
+- **N6 fixed:** hook receive timestamps are assigned before routing; grace expiry checks newer same-session activity even when processing order is reversed.
+- **N7 substantially fixed:** silent state hooks use async command relays when their own alert is disabled. The core Stop hook remains HTTP by design for final-completion timing.
+- **N8 fixed:** README top-level completion semantics were rewritten for v1.7.2.
+- **N9 fixed:** routing metadata is assigned once and shared global-storage marker files dedupe cross-window retries.
+- **N10 fixed:** unknown/non-object cron entries block conservatively.
+- **N11 fixed for future/direct upgrades:** old `strictCompletionVerification=true` maps to Auto; Legacy mode skips compatibility warnings; warnings are keyed by reported Claude version when available. Existing v1.7.1 Strict users are asked before changing because intent cannot be reconstructed reliably.
+- **N12 intentionally unchanged:** SessionEnd cancels pending Finished because closing/clearing a session is not proof that background work completed; avoiding a false Done sound is the extension's primary invariant.
+- **N13 fixed/clarified:** documentation no longer overclaims a stable cron schema, and release packaging asserts there are no root media WAV duplicates.

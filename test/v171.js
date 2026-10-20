@@ -44,7 +44,7 @@ assert.strictEqual(t.stopCompletionState(stop('team-state',[{id:'tm-id',type:'te
 assert.strictEqual(t.stopCompletionState(stop('artifact-monitor',[{id:'m',type:'monitor',status:'running',description:'Artifact live updates watcher'}],[])).kind,'finished');
 
 // Recurring crons are non-blocking by default; one-shot wakeups block.
-assert.strictEqual(t.stopCompletionState(stop('cron-rec',[],[{id:'c',recurring:true,schedule:'* * * * *'}])).kind,'finished');
+assert.strictEqual(t.stopCompletionState(stop('cron-rec',[],[{id:'c',recurring:true,schedule:'* * * * *'}])).kind,'recurring');
 assert.strictEqual(t.stopCompletionState(stop('cron-rec-on',[],[{id:'c',recurring:true,schedule:'* * * * *'}]),{recurringCronsCountAsPending:true}).kind,'background');
 assert.strictEqual(t.stopCompletionState(stop('cron-once',[],[{id:'c',recurring:false,schedule:'once'}])).kind,'background');
 

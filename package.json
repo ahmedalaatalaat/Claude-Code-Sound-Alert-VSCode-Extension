@@ -2,7 +2,7 @@
   "name": "claude-code-sound-alerts",
   "displayName": "Claude Code Sound Alerts",
   "description": "Background-aware Claude Code sound alerts with verified final completion, agent/background states, multi-window routing, per-event sounds, volume boost, repeats, and presets.",
-  "version": "1.7.1",
+  "version": "1.7.2",
   "publisher": "local",
   "license": "MIT",
   "engines": {
@@ -130,16 +130,16 @@
         },
         "claudeSoundAlerts.finishedGraceMs": {
           "type": "number",
-          "default": 2000,
+          "default": 2500,
           "minimum": 0,
           "maximum": 15000,
-          "description": "Delay a Finished candidate before playing it. Any immediate Claude self-resume activity in the same session cancels the candidate.",
+          "description": "Delay a Finished candidate before playing it. Any newer same-session activity received during this grace window cancels the candidate, including queued background-task wakeups.",
           "scope": "application"
         },
         "claudeSoundAlerts.textHeuristicDowngrade": {
           "type": "boolean",
           "default": true,
-          "description": "Downgrade a Finished candidate to Background / Waiting when Claude explicitly says work is still running or waiting. This rule can only suppress Finished; it can never create one.",
+          "description": "Downgrade a Finished candidate only when Claude's closing text contains a high-confidence indication that work is still running or will report later. User-directed waits and negated phrases are excluded. This rule can only suppress Finished; it can never create one.",
           "scope": "application"
         },
         "claudeSoundAlerts.backgroundAlertMode": {
@@ -150,7 +150,7 @@
             "everyStop"
           ],
           "default": "transition",
-          "description": "When to play Background / Waiting: only when entering waiting, when the blocking task set changes, or on every pending Stop.",
+          "description": "When to play Background / Waiting within one background-work chain: only when entering waiting, when the blocking task set changes, or on every pending Stop.",
           "scope": "application"
         },
         "claudeSoundAlerts.ignoredBackgroundTaskTypes": {
@@ -167,7 +167,7 @@
         "claudeSoundAlerts.recurringCronsCountAsPending": {
           "type": "boolean",
           "default": false,
-          "description": "When enabled, recurring session crons such as /loop prevent Main Work Finished. Off by default so recurring automation does not block Finished forever.",
+          "description": "When enabled, recurring session crons such as /loop are treated as Background / Waiting. When off, recurring iterations are classified separately and never count as Main Work Finished.",
           "scope": "application"
         },
         "claudeSoundAlerts.strictCompletionVerification": {
@@ -216,7 +216,7 @@
   "scripts": {
     "check": "node --check extension.js",
     "lint": "eslint extension.js",
-    "test": "node test/smoke.js && node test/review2.js && node test/review3.js && node test/v170.js && node test/v171.js"
+    "test": "node test/smoke.js && node test/review2.js && node test/review3.js && node test/v170.js && node test/v171.js && node test/v172.js"
   },
   "devDependencies": {
     "@types/vscode": "^1.90.0",
